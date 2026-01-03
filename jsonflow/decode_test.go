@@ -788,13 +788,13 @@ func TestDecodeObjectEnd(t *testing.T) {
 func TestDecodeAny(t *testing.T) {
 	t.Run("Decode any with read token error", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader(""))
-		_, err := DecodeAny(d)
+		_, err := DecodeAny[any](d)
 		assert.Error(t, err).String("EOF")
 	})
 
 	t.Run("Decode any with unmarshal error", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader("1e520"))
-		_, err := DecodeAny(d)
+		_, err := DecodeAny[any](d)
 		assert.Error(t, err).String("json: cannot unmarshal JSON number 1e520 into Go float64: value out of range")
 	})
 }
@@ -885,7 +885,7 @@ func (b *TestObject) DecodeJSON(d Decoder) error {
 				return err
 			}
 		case hashAny:
-			if b.Any, err = DecodeAny(d); err != nil {
+			if b.Any, err = DecodeAny[any](d); err != nil {
 				return err
 			}
 		case hashObject:
@@ -905,7 +905,7 @@ func (b *TestObject) DecodeJSON(d Decoder) error {
 				return err
 			}
 		case hashAnyList:
-			if b.AnyList, err = DecodeArray(DecodeAny)(d); err != nil {
+			if b.AnyList, err = DecodeArray(DecodeAny[any])(d); err != nil {
 				return err
 			}
 		case hashIntIntList:
@@ -933,7 +933,7 @@ func (b *TestObject) DecodeJSON(d Decoder) error {
 				return err
 			}
 		case hashStrAnyListMap:
-			if b.StrAnyListMap, err = DecodeMap(DecodeString, DecodeArray(DecodeAny))(d); err != nil {
+			if b.StrAnyListMap, err = DecodeMap(DecodeString, DecodeArray(DecodeAny[any]))(d); err != nil {
 				return err
 			}
 		default:

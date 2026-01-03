@@ -275,14 +275,14 @@ func DecodeObjectEnd(d Decoder) error {
 
 // DecodeAny decodes the next JSON value (scalar, object, or array)
 // into a Go value using Decoder.Unmarshal.
-func DecodeAny(d Decoder) (any, error) {
+func DecodeAny[T any](d Decoder) (T, error) {
+	var v T
 	b, err := d.ReadValue()
 	if err != nil {
-		return nil, err
+		return v, err
 	}
-	var v any
 	if err = Unmarshal(b, &v); err != nil {
-		return nil, err
+		return v, err
 	}
 	return v, nil
 }
