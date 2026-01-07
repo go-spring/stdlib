@@ -133,20 +133,22 @@ func (s *HelloServerImpl) Stream(ctx context.Context, req *HelloRequest, resp ch
 }
 
 // Routers returns a list of HTTP routers for the service.
-func Routers(server HelloServer) []httpsvr.Router {
+func Routers(server HelloServer, fn httpsvr.NewRequestContext) []httpsvr.Router {
 	return []httpsvr.Router{
 		{
 			Method:  "GET",
 			Pattern: "/v1/hello",
 			Handler: func(w http.ResponseWriter, r *http.Request) {
-				httpsvr.HandleJSON(w, r, NewHelloRequest(), server.Hello)
+				ctx := httpsvr.WithRequestContext(r.Context(), fn(r, w))
+				httpsvr.HandleJSON(w, r.WithContext(ctx), NewHelloRequest(), server.Hello)
 			},
 		},
 		{
 			Method:  "GET",
 			Pattern: "/v1/stream",
 			Handler: func(w http.ResponseWriter, r *http.Request) {
-				httpsvr.HandleStream(w, r, NewHelloRequest(), server.Stream)
+				ctx := httpsvr.WithRequestContext(r.Context(), fn(r, w))
+				httpsvr.HandleStream(w, r.WithContext(ctx), NewHelloRequest(), server.Stream)
 			},
 		},
 	}
@@ -154,7 +156,7 @@ func Routers(server HelloServer) []httpsvr.Router {
 
 func TestHello(t *testing.T) {
 	svr := httpsvr.NewSimpleServer(":9191")
-	for _, r := range Routers(&HelloServerImpl{}) {
+	for _, r := range Routers(&HelloServerImpl{}, httpsvr.NewSimpleContext) {
 		svr.Route(r)
 	}
 	go func() {
@@ -177,7 +179,7 @@ func TestHello(t *testing.T) {
 
 func TestStream(t *testing.T) {
 	svr := httpsvr.NewSimpleServer(":9191")
-	for _, r := range Routers(&HelloServerImpl{}) {
+	for _, r := range Routers(&HelloServerImpl{}, httpsvr.NewSimpleContext) {
 		svr.Route(r)
 	}
 	go func() {

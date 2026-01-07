@@ -23,7 +23,6 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/jsonflow"
@@ -34,93 +33,6 @@ import (
 // Users should implement their own error handling logic.
 var ErrorHandler = func(r *http.Request, w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusInternalServerError)
-}
-
-type ctxKeyType struct{}
-
-var ctxKey ctxKeyType
-
-// httpReqResp wraps both *http.Request and http.ResponseWriter.
-type httpReqResp struct {
-	r *http.Request
-	w http.ResponseWriter
-}
-
-// getHTTPReqResp retrieves the httpReqResp wrapper from the context.
-func getHTTPReqResp(ctx context.Context) httpReqResp {
-	req, _ := ctx.Value(&ctxKey).(httpReqResp)
-	return req
-}
-
-// setHTTPReqResp stores the http.Request and http.ResponseWriter in the context.
-func setHTTPReqResp(ctx context.Context, r *http.Request, w http.ResponseWriter) context.Context {
-	return context.WithValue(ctx, &ctxKey, httpReqResp{r, w})
-}
-
-// GetReq retrieves the *http.Request from the context if available.
-func GetReq(ctx context.Context) *http.Request {
-	return getHTTPReqResp(ctx).r
-}
-
-// GetHeader retrieves a specific HTTP request header by key from the context.
-func GetHeader(ctx context.Context, key string) string {
-	if r := getHTTPReqResp(ctx).r; r != nil {
-		return r.Header.Get(key)
-	}
-	return ""
-}
-
-// SetCode sets the HTTP response status code in the context.
-func SetCode(ctx context.Context, httpCode int) {
-	if w := getHTTPReqResp(ctx).w; w != nil {
-		w.WriteHeader(httpCode)
-	}
-}
-
-// SetHeader sets a response header key/value pair in the context.
-func SetHeader(ctx context.Context, key, value string) {
-	if w := getHTTPReqResp(ctx).w; w != nil {
-		w.Header().Set(key, value)
-	}
-}
-
-// SetCookie adds a Set-Cookie header to the HTTP response in the context.
-func SetCookie(ctx context.Context, cookie *http.Cookie) {
-	if cookie != nil {
-		if w := getHTTPReqResp(ctx).w; w != nil {
-			http.SetCookie(w, cookie)
-		}
-	}
-}
-
-// Router defines a single route with HTTP method, pattern, and handler.
-type Router struct {
-	Method  string
-	Pattern string
-	Handler http.HandlerFunc
-}
-
-// Server is an interface that defines a method to register routes.
-type Server interface {
-	Route(r Router)
-}
-
-// SimpleServer defines a basic HTTP server with an internal multiplexer.
-type SimpleServer struct {
-	*http.Server
-	mux *http.ServeMux
-}
-
-// NewSimpleServer creates a new SimpleServer instance with the specified address.
-func NewSimpleServer(addr string) *SimpleServer {
-	mux := http.NewServeMux()
-	svr := &http.Server{Addr: addr, Handler: mux}
-	return &SimpleServer{Server: svr, mux: mux}
-}
-
-// Route registers a new route in the SimpleServer with the provided router.
-func (s *SimpleServer) Route(r Router) {
-	s.mux.HandleFunc(strings.TrimSpace(r.Method+" "+r.Pattern), r.Handler)
 }
 
 // RequestObject defines the interface that all request types must implement.
@@ -248,8 +160,7 @@ func HandleJSON[Req RequestObject, Resp any](w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	ctx := setHTTPReqResp(r.Context(), r, w)
-	resp := h(ctx, req)
+	resp := h(r.Context(), req)
 
 	if err := jsonflow.MarshalWrite(w, resp); err != nil {
 		ErrorHandler(r, w, err)
@@ -409,8 +320,7 @@ func HandleStream[Req RequestObject, Resp *Event[T], T any](w http.ResponseWrite
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	ctx := setHTTPReqResp(r.Context(), r, w)
-	h(ctx, req, responses)
+	h(r.Context(), req, responses)
 	close(responses)
 	<-done
 }
