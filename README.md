@@ -1,8 +1,8 @@
-# golib
+# stdlib
 
 [English](README.md) | [中文](README_CN.md)
 
-`golib` is a collection of independent utility modules written in Go.
+`stdlib` is a collection of independent utility modules written in Go.
 
 ## Module Overview
 

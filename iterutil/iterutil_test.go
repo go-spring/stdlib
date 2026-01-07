@@ -19,7 +19,7 @@ package iterutil
 import (
 	"testing"
 
-	"github.com/lvan100/golib/testing/assert"
+	"github.com/go-spring/stdlib/testing/assert"
 )
 
 func fibonacci(n int) int {

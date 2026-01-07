@@ -23,9 +23,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lvan100/golib/errutil"
-	"github.com/lvan100/golib/hashutil"
-	"github.com/lvan100/golib/testing/assert"
+	"github.com/go-spring/stdlib/errutil"
+	"github.com/go-spring/stdlib/hashutil"
+	"github.com/go-spring/stdlib/testing/assert"
 )
 
 func ptr[T any](v T) *T {

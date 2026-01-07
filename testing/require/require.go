@@ -19,7 +19,7 @@
 package require
 
 import (
-	"github.com/lvan100/golib/testing/internal"
+	"github.com/go-spring/stdlib/testing/internal"
 )
 
 // fatalOnFailure indicates whether to stop the test when an assertion fails.

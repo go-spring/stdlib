@@ -19,9 +19,9 @@ package testcase_test
 import (
 	"testing"
 
-	"github.com/lvan100/golib/testing/assert"
-	"github.com/lvan100/golib/testing/internal"
-	"github.com/lvan100/golib/testing/require"
+	"github.com/go-spring/stdlib/testing/assert"
+	"github.com/go-spring/stdlib/testing/internal"
+	"github.com/go-spring/stdlib/testing/require"
 )
 
 func TestSlice_Length(t *testing.T) {

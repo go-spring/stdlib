@@ -20,7 +20,7 @@ import (
 	"hash/fnv"
 	"testing"
 
-	"github.com/lvan100/golib/testing/assert"
+	"github.com/go-spring/stdlib/testing/assert"
 )
 
 func TestFNV1a64(t *testing.T) {

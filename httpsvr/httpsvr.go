@@ -25,8 +25,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lvan100/golib/errutil"
-	"github.com/lvan100/golib/jsonflow"
+	"github.com/go-spring/stdlib/errutil"
+	"github.com/go-spring/stdlib/jsonflow"
 )
 
 // ErrorHandler is the default handler for reporting errors back to the client.

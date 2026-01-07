@@ -19,7 +19,7 @@ package ordered
 import (
 	"testing"
 
-	"github.com/lvan100/golib/testing/assert"
+	"github.com/go-spring/stdlib/testing/assert"
 )
 
 func TestOrderedMapKeys(t *testing.T) {

@@ -25,11 +25,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lvan100/golib/errutil"
-	"github.com/lvan100/golib/hashutil"
-	"github.com/lvan100/golib/httpsvr"
-	"github.com/lvan100/golib/jsonflow"
-	"github.com/lvan100/golib/ptrutil"
+	"github.com/go-spring/stdlib/errutil"
+	"github.com/go-spring/stdlib/hashutil"
+	"github.com/go-spring/stdlib/httpsvr"
+	"github.com/go-spring/stdlib/jsonflow"
+	"github.com/go-spring/stdlib/ptrutil"
 )
 
 type HelloRequest struct {

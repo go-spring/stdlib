@@ -24,8 +24,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/lvan100/golib/testing/assert"
-	"github.com/lvan100/golib/typeutil"
+	"github.com/go-spring/stdlib/testing/assert"
+	"github.com/go-spring/stdlib/typeutil"
 )
 
 func TestIsErrorType(t *testing.T) {

@@ -17,7 +17,7 @@
 package jsonflow
 
 import (
-	"github.com/lvan100/golib/jsonflow/internal/json"
+	"github.com/go-spring/stdlib/jsonflow/internal/json"
 )
 
 // NotForPublicUse is a private type used to prevent the use of

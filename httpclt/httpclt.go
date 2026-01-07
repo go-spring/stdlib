@@ -23,7 +23,7 @@ import (
 	"maps"
 	"net/http"
 
-	"github.com/lvan100/golib/jsonflow"
+	"github.com/go-spring/stdlib/jsonflow"
 )
 
 // QueryStringer defines the method to convert an object to a query string

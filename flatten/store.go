@@ -60,8 +60,8 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/lvan100/golib/errutil"
-	"github.com/lvan100/golib/ordered"
+	"github.com/go-spring/stdlib/errutil"
+	"github.com/go-spring/stdlib/ordered"
 )
 
 // treeNode represents a node in the hierarchical tree that models

@@ -45,7 +45,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/lvan100/golib/flatten"
+	"github.com/go-spring/stdlib/flatten"
 )
 
 func main() {

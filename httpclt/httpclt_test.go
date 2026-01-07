@@ -27,11 +27,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lvan100/golib/hashutil"
-	"github.com/lvan100/golib/httpclt"
-	"github.com/lvan100/golib/jsonflow"
-	"github.com/lvan100/golib/ptrutil"
-	"github.com/lvan100/golib/testing/assert"
+	"github.com/go-spring/stdlib/hashutil"
+	"github.com/go-spring/stdlib/httpclt"
+	"github.com/go-spring/stdlib/jsonflow"
+	"github.com/go-spring/stdlib/ptrutil"
+	"github.com/go-spring/stdlib/testing/assert"
 )
 
 func init() {

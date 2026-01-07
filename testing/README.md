@@ -27,8 +27,8 @@ package main
 import (
 	"testing"
 
-	"github.com/lvan100/golib/testing/assert"
-	"github.com/lvan100/golib/testing/require"
+	"github.com/go-spring/stdlib/testing/assert"
+	"github.com/go-spring/stdlib/testing/require"
 )
 
 func TestSomething(t *testing.T) {

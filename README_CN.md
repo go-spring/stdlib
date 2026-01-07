@@ -1,8 +1,8 @@
-# golib
+# stdlib
 
 [English](README.md) | [中文](README_CN.md)
 
-`golib` 是一个包含多个独立 Go 语言工具模块的集合库。
+`stdlib` 是一个包含多个独立 Go 语言工具模块的集合库。
 
 ## 模块概览
 

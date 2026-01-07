@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lvan100/golib/errutil"
+	"github.com/go-spring/stdlib/errutil"
 )
 
 // PathType represents the type of a path element in a hierarchical key.

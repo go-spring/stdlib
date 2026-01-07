@@ -21,8 +21,8 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/lvan100/golib/errutil"
-	"github.com/lvan100/golib/jsonflow/internal/json"
+	"github.com/go-spring/stdlib/errutil"
+	"github.com/go-spring/stdlib/jsonflow/internal/json"
 )
 
 const (

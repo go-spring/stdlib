@@ -19,7 +19,7 @@ package jsonv2
 import (
 	"encoding/json/jsontext"
 
-	"github.com/lvan100/golib/jsonflow/internal/json"
+	"github.com/go-spring/stdlib/jsonflow/internal/json"
 )
 
 // Decoder wraps jsontext.Decoder to implement the json.Decoder interface.

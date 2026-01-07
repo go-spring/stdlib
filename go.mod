@@ -1,5 +1,5 @@
-module github.com/lvan100/golib
+module github.com/go-spring/stdlib
 
-go 1.24
+go 1.25
 
 require github.com/spf13/cast v1.10.0
