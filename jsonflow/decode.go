@@ -18,11 +18,11 @@ package jsonflow
 
 import (
 	"encoding/base64"
-	"math"
 	"strconv"
 
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/jsonflow/internal/json"
+	"github.com/go-spring/stdlib/mathutil"
 )
 
 const (
@@ -54,24 +54,6 @@ func DecodeBoolPtr(d Decoder) (*bool, error) {
 	return DecodeValuePtr(ParseBool, errFormatBoolean)(d)
 }
 
-// OverflowInt checks whether an int64 value exceeds the bounds of the target integer type T.
-func OverflowInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](v int64) bool {
-	var z T
-	switch any(z).(type) {
-	case int:
-		return v > math.MaxInt || v < math.MinInt
-	case int8:
-		return v > math.MaxInt8 || v < math.MinInt8
-	case int16:
-		return v > math.MaxInt16 || v < math.MinInt16
-	case int32:
-		return v > math.MaxInt32 || v < math.MinInt32
-	case int64:
-		return v > math.MaxInt64 || v < math.MinInt64
-	}
-	return false
-}
-
 // ParseInt parses a JSON number token into an integer type T.
 // Returns an error if the token is not a number or if the value overflows.
 func ParseInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](token string, k json.Kind) (T, error) {
@@ -82,7 +64,7 @@ func ParseInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](token string, k json.Ki
 	if err != nil {
 		return 0, err
 	}
-	if OverflowInt[T](v) {
+	if mathutil.OverflowInt[T](v) {
 		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
 	}
 	return T(v), nil
@@ -106,7 +88,7 @@ func ParseIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](token string, _ json
 	if err != nil {
 		return 0, err
 	}
-	if OverflowInt[T](v) {
+	if mathutil.OverflowInt[T](v) {
 		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
 	}
 	return T(v), nil
@@ -115,22 +97,6 @@ func ParseIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](token string, _ json
 // DecodeIntKey reads a JSON object key and parses it as an integer type T.
 func DecodeIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](d Decoder) (T, error) {
 	return DecodeValue(ParseIntKey[T], errFormatNumber)(d)
-}
-
-// OverflowUint checks whether a uint64 value exceeds the bounds of the target unsigned type T.
-func OverflowUint[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](v uint64) bool {
-	var z T
-	switch any(z).(type) {
-	case uint:
-		return v > math.MaxUint
-	case uint8:
-		return v > math.MaxUint8
-	case uint16:
-		return v > math.MaxUint16
-	case uint32:
-		return v > math.MaxUint32
-	}
-	return false
 }
 
 // ParseUint parses a JSON number token into an unsigned integer type T.
@@ -142,7 +108,7 @@ func ParseUint[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](token string, k j
 	if err != nil {
 		return 0, err
 	}
-	if OverflowUint[T](v) {
+	if mathutil.OverflowUint[T](v) {
 		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s`", token)
 	}
 	return T(v), nil
@@ -164,7 +130,7 @@ func ParseUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](token string, 
 	if err != nil {
 		return 0, err
 	}
-	if OverflowUint[T](v) {
+	if mathutil.OverflowUint[T](v) {
 		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
 	}
 	return T(v), nil
@@ -173,16 +139,6 @@ func ParseUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](token string, 
 // DecodeUintKey reads a JSON object key and parses it as an unsigned integer type T.
 func DecodeUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](d Decoder) (T, error) {
 	return DecodeValue(ParseUintKey[T], errFormatNumber)(d)
-}
-
-// OverflowFloat checks whether a float64 value exceeds the bounds of the target float type T.
-func OverflowFloat[T ~float32 | ~float64](v float64) bool {
-	var z T
-	switch any(z).(type) {
-	case float32:
-		return v > math.MaxFloat32 || v < -math.MaxFloat32
-	}
-	return false
 }
 
 // ParseFloat parses a JSON number token into a float type T.
@@ -194,7 +150,7 @@ func ParseFloat[T ~float32 | ~float64](token string, k json.Kind) (T, error) {
 	if err != nil {
 		return 0, err
 	}
-	if OverflowFloat[T](f) {
+	if mathutil.OverflowFloat[T](f) {
 		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
 	}
 	return T(f), nil
