@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-spring/stdlib/ctxcache"
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/jsonflow"
 )
@@ -159,8 +160,11 @@ func HandleJSON[Req RequestObject, Resp any](w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	ctx, cancel := ctxcache.Init(r.Context())
+	defer cancel()
+
 	w.Header().Set("Content-Type", "application/json")
-	resp := h(r.Context(), req)
+	resp := h(ctx, req)
 
 	if err := jsonflow.MarshalWrite(w, resp); err != nil {
 		ErrorHandler(r, w, err)
@@ -320,7 +324,10 @@ func HandleStream[Req RequestObject, Resp *Event[T], T any](w http.ResponseWrite
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	h(r.Context(), req, responses)
+	ctx, cancel := ctxcache.Init(r.Context())
+	defer cancel()
+
+	h(ctx, req, responses)
 	close(responses)
 	<-done
 }
