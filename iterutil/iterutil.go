@@ -19,7 +19,7 @@ package iterutil
 // Times executes the function 'fn' exactly 'count' times.
 // Used to eliminate deferred execution under standard for loops.
 func Times(count int, fn func(i int)) {
-	for i := 0; i < count; i++ {
+	for i := range count {
 		fn(i)
 	}
 }

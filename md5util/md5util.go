@@ -14,22 +14,16 @@
  * limitations under the License.
  */
 
-package hashutil
+package md5util
 
 import (
-	"hash/fnv"
+	"crypto/md5"
+	"encoding/hex"
 )
 
-// FNV1a64 computes the 64-bit FNV-1a hash of the given string using
-// the standard library hash/fnv implementation.
-//
-// This implementation favors readability and adherence to standard
-// library abstractions over raw performance. It is appropriate for:
-//   - Non-critical code paths
-//   - One-off or infrequent hash computations
-//   - Situations where consistency with other hash.Hash users matters
-func FNV1a64(s string) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(s))
-	return h.Sum64()
+// MD5 computes the MD5 checksum of the given string
+// and returns it as a lowercase hexadecimal string.
+func MD5(str string) string {
+	hash := md5.Sum([]byte(str))
+	return hex.EncodeToString(hash[:])
 }

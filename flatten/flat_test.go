@@ -17,12 +17,15 @@
 package flatten
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/go-spring/stdlib/testing/assert"
 )
 
 func TestFlatten(t *testing.T) {
+	testChan := make(chan int)
+	testFunc := func() {}
 	tests := []struct {
 		name     string
 		input    map[string]any
@@ -107,14 +110,14 @@ func TestFlatten(t *testing.T) {
 				"int":     42,
 				"float":   3.14,
 				"string":  "text",
-				"complex": 1 + 2i, // This type is not supported by cast.ToString
+				"complex": 1 + 2i,
 			},
 			expected: map[string]string{
 				"bool":    "true",
 				"int":     "42",
 				"float":   "3.14",
 				"string":  "text",
-				"complex": "", // complex number is not supported
+				"complex": "(1+2i)",
 			},
 		},
 		{
@@ -135,12 +138,12 @@ func TestFlatten(t *testing.T) {
 		{
 			name: "chan and func values",
 			input: map[string]any{
-				"chan": make(chan int),
-				"func": func() {},
+				"chan": testChan,
+				"func": testFunc,
 			},
 			expected: map[string]string{
-				"chan": "",
-				"func": "",
+				"chan": fmt.Sprintf("%p", testChan),
+				"func": fmt.Sprintf("%p", testFunc),
 			},
 		},
 		{

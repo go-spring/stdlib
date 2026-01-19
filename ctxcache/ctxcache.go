@@ -109,16 +109,16 @@ func (cache *Cache) Clear() {
 //
 // Only one Cache may be attached to a context. Repeated calls to Init with the
 // same context are safe: if a Cache already exists, Init returns the original
-// context and the same cancel function created previously.
+// context and a no-op cancel function.
 //
 // The returned cancel function should typically be deferred at the request
 // boundary (e.g. in HTTP middleware) to ensure request-scoped data is cleaned up.
 //
-// Only the first call to the cancel function performs actual cleanup.
-// Subsequent calls are safe but have no effect.
+// When a Cache is newly created, the cancel function clears the Cache.
+// Calling the cancel function multiple times is safe.
 func Init(ctx context.Context) (_ context.Context, cancel func()) {
-	if cache, ok := getCache(ctx); ok {
-		return ctx, cache.Clear
+	if _, ok := getCache(ctx); ok {
+		return ctx, func() {}
 	}
 	m := &Cache{values: make(map[any]any)}
 	return context.WithValue(ctx, &cacheKey, m), m.Clear

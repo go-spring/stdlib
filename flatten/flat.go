@@ -19,19 +19,40 @@ package flatten
 import (
 	"fmt"
 	"reflect"
-
-	"github.com/spf13/cast"
+	"strconv"
 )
 
-// Flatten takes a nested map[string]any and flattens it into a
-// map[string]string. Nested maps are represented using dot-notation
-// (e.g. "parent.child"), and slices/arrays are represented using index-notation
-// (e.g. "array[0]"). The following rules apply:
-//   - Nil values (both untyped and typed nil) are represented as "<nil>".
-//   - Nil elements in slices/arrays are preserved and represented as "<nil>".
-//   - Empty (zero-length but not nil) maps are represented as "{}".
-//   - Empty (zero-length but not nil) slices/arrays are represented as "[]".
-//   - All primitive values are converted to strings using cast.ToString.
+// Flatten flattens a nested map[string]any into a map[string]string.
+//
+// This function is intended for data produced by encoding/json.Unmarshal,
+// where values are limited to the following kinds:
+//   - map[string]any
+//   - []any
+//   - primitive JSON types (bool, number, string, nil)
+//
+// Structs, custom types, and non-string map keys are explicitly out of scope.
+//
+// Flattening rules:
+//
+//   - Nested maps are expanded using dot notation:
+//     {"a": {"b": 1}} -> "a.b" = "1"
+//
+//   - Slices (and arrays, although arrays do not originate from json.Unmarshal)
+//     are expanded using index notation:
+//     {"a": [1, 2]} -> "a[0]" = "1", "a[1]" = "2"
+//
+//   - Nil values (both untyped nil and typed nil) are represented as "<nil>".
+//
+//   - Empty (zero-length but non-nil) maps are represented as "{}".
+//
+//   - Empty (zero-length but non-nil) slices are represented as "[]".
+//
+//   - Primitive values are converted to strings using deterministic,
+//     Go-native formatting (strconv).
+//
+// The resulting map is intended for display-oriented use cases such as
+// logging, diffing, diagnostics, or inspection. The output is not reversible
+// and must not be treated as a lossless serialization format.
 func Flatten(m map[string]any) map[string]string {
 	result := make(map[string]string)
 	for key, val := range m {
@@ -40,9 +61,9 @@ func Flatten(m map[string]any) map[string]string {
 	return result
 }
 
-// flattenValue recursively flattens a value (map, slice, array, or primitive)
-// into the result map under the given key. Nested structures are expanded
-// using dot notation (for maps) and index notation (for slices/arrays).
+// flattenValue recursively expands v into result under the given key.
+// Composite values are traversed depth-first, producing fully-qualified
+// flattened keys.
 func flattenValue(key string, val any, result map[string]string) {
 	if val == nil { // untyped nil
 		result[key] = "<nil>"
@@ -60,7 +81,7 @@ func flattenValue(key string, val any, result map[string]string) {
 		}
 		iter := v.MapRange()
 		for iter.Next() {
-			mapKey := cast.ToString(iter.Key().Interface())
+			mapKey := toString(iter.Key())
 			mapValue := iter.Value().Interface()
 			flattenValue(key+"."+mapKey, mapValue, result)
 		}
@@ -69,9 +90,7 @@ func flattenValue(key string, val any, result map[string]string) {
 			result[key] = "<nil>"
 			return
 		}
-		fallthrough
-	case reflect.Array:
-		if v.Len() == 0 { // empty slice/array
+		if v.Len() == 0 { // empty slice
 			result[key] = "[]"
 			return
 		}
@@ -80,7 +99,42 @@ func flattenValue(key string, val any, result map[string]string) {
 			subValue := v.Index(i).Interface()
 			flattenValue(subKey, subValue, result)
 		}
+	case reflect.Interface, reflect.Ptr:
+		if v.IsNil() { // typed nil interface or pointer
+			result[key] = "<nil>"
+			return
+		}
+		flattenValue(key, v.Elem().Interface(), result)
 	default:
-		result[key] = cast.ToString(val)
+		result[key] = toString(v)
+	}
+}
+
+// toString converts a reflect.Value representing a primitive JSON value
+// into its string form. It intentionally supports only basic kinds and
+// falls back to fmt.Sprintf for completeness.
+func toString(v reflect.Value) string {
+	switch v.Kind() {
+	case reflect.Bool:
+		return strconv.FormatBool(v.Bool())
+	case reflect.Int,
+		reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64:
+		return strconv.FormatInt(v.Int(), 10)
+	case reflect.Uint,
+		reflect.Uint8,
+		reflect.Uint16,
+		reflect.Uint32,
+		reflect.Uint64:
+		return strconv.FormatUint(v.Uint(), 10)
+	case reflect.Float32,
+		reflect.Float64:
+		return strconv.FormatFloat(v.Float(), 'f', -1, 64)
+	case reflect.String:
+		return v.String()
+	default:
+		return fmt.Sprintf("%v", v.Interface())
 	}
 }
