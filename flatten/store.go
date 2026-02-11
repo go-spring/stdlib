@@ -237,6 +237,17 @@ func (s *Storage) Get(key string, def ...string) string {
 	return v.Value
 }
 
+// Lookup retrieves the value associated with the given flattened key.
+// Returns the value and true if the key is found, or an empty string and
+// false if the key is not found.
+func (s *Storage) Lookup(key string) (string, bool) {
+	v, ok := s.data[key]
+	if !ok {
+		return "", false
+	}
+	return v.Value, true
+}
+
 // Set inserts or updates a flattened key with the given value and
 // the index of the file it originated from.
 //
