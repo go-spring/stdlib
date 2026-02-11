@@ -17,6 +17,8 @@
 package flatten
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/go-spring/stdlib/testing/assert"
@@ -24,550 +26,318 @@ import (
 
 func TestStorage(t *testing.T) {
 
-	t.Run("empty", func(t *testing.T) {
-		s := NewStorage()
-		fileID := s.AddFile("store_test.go")
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{})
-		assert.That(t, s.Data()).Equal(map[string]string{})
-
-		subKeys, err := s.SubKeys("a")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Nil()
-
-		subKeys, err = s.SubKeys("a.b")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Nil()
-
-		subKeys, err = s.SubKeys("a[0]")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Nil()
-
-		assert.That(t, s.Has("a")).False()
-		assert.That(t, s.Has("a.b")).False()
-		assert.That(t, s.Has("a[0]")).False()
-
-		err = s.Set("", "abc", fileID)
-		assert.Error(t, err).Matches("key is empty")
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"store_test.go": 0,
-		})
-
-		keys := s.Keys()
-		assert.That(t, keys).Equal([]string{})
-	})
-
-	t.Run("map-0", func(t *testing.T) {
-		s := NewStorage()
-		fileID := s.AddFile("store_test.go")
-
-		err := s.Set("a", "b", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("a")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"a": {0, "b"},
-		})
-		assert.That(t, s.Data()).Equal(map[string]string{
-			"a": "b",
-		})
-
-		err = s.Set("a.y", "x", fileID)
-		assert.Error(t, err).Matches("property conflict at path a.y")
-		err = s.Set("a[0]", "x", fileID)
-		assert.Error(t, err).Matches("property conflict at path a\\[0]")
-
-		assert.That(t, s.Has("")).False()
-		assert.That(t, s.Has("a[")).False()
-		assert.That(t, s.Has("a.y")).False()
-		assert.That(t, s.Has("a[0]")).False()
-
-		subKeys, err := s.SubKeys("")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"a"})
-
-		_, err = s.SubKeys("a")
-		assert.Error(t, err).Matches("property conflict at path a")
-		_, err = s.SubKeys("a[")
-		assert.Error(t, err).Matches(`invalid key "a\[" at pos 1\: unclosed '\['`)
-
-		err = s.Set("a", "c", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("a")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"a": {0, "c"},
-		})
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"store_test.go": 0,
-		})
-
-		val := s.Get("a")
-		assert.That(t, val).Equal("c")
-
-		keys := s.Keys()
-		assert.That(t, keys).Equal([]string{"a"})
-	})
-
-	t.Run("map-1", func(t *testing.T) {
-		s := NewStorage()
-		fileID := s.AddFile("store_test.go")
-
-		err := s.Set("m.x", "y", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("m")).True()
-		assert.That(t, s.Has("m.x")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"m.x": {0, "y"},
-		})
-		assert.That(t, s.Data()).Equal(map[string]string{
-			"m.x": "y",
-		})
-
-		assert.That(t, s.Has("")).False()
-		assert.That(t, s.Has("m.t")).False()
-		assert.That(t, s.Has("m.x.y")).False()
-		assert.That(t, s.Has("m[0]")).False()
-		assert.That(t, s.Has("m.x[0]")).False()
-
-		err = s.Set("m", "a", fileID)
-		assert.Error(t, err).Matches("property conflict at path m")
-		err = s.Set("m.x.z", "w", fileID)
-		assert.Error(t, err).Matches("property conflict at path m")
-		err = s.Set("m[0]", "f", fileID)
-		assert.Error(t, err).Matches("property conflict at path m\\[0]")
-
-		_, err = s.SubKeys("m.t")
-		assert.That(t, err).Nil()
-		subKeys, err := s.SubKeys("m")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"x"})
-
-		_, err = s.SubKeys("m.x")
-		assert.Error(t, err).Matches("property conflict at path m.x")
-		_, err = s.SubKeys("m[0]")
-		assert.Error(t, err).Matches("property conflict at path m\\[0]")
-
-		err = s.Set("m.x", "z", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("m")).True()
-		assert.That(t, s.Has("m.x")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"m.x": {0, "z"},
-		})
-
-		err = s.Set("m.t", "q", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("m")).True()
-		assert.That(t, s.Has("m.x")).True()
-		assert.That(t, s.Has("m.t")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"m.x": {0, "z"},
-			"m.t": {0, "q"},
-		})
-
-		subKeys, err = s.SubKeys("m")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"t", "x"})
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"store_test.go": 0,
-		})
-
-		val := s.Get("m.x")
-		assert.That(t, val).Equal("z")
-
-		keys := s.Keys()
-		assert.That(t, keys).Equal([]string{"m.t", "m.x"})
-	})
-
-	t.Run("arr-0", func(t *testing.T) {
-		s := NewStorage()
-		fileID := s.AddFile("store_test.go")
-
-		err := s.Set("[0]", "p", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("[0]")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"[0]": {0, "p"},
-		})
-		assert.That(t, s.Data()).Equal(map[string]string{
-			"[0]": "p",
-		})
-
-		err = s.Set("[0]x", "f", fileID)
-		assert.Error(t, err).Matches(`invalid key "\[0\]x" at pos 3: unexpected character 'x' after '\]'`)
-		err = s.Set("[0].x", "f", fileID)
-		assert.Error(t, err).Matches(`property conflict at path \[0\].x`)
-
-		err = s.Set("[0]", "w", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"[0]": {0, "w"},
-		})
-
-		subKeys, err := s.SubKeys("")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"0"})
-
-		err = s.Set("[1]", "p", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("[0]")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"[0]": {0, "w"},
-			"[1]": {0, "p"},
-		})
-
-		subKeys, err = s.SubKeys("")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"0", "1"})
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"store_test.go": 0,
-		})
-
-		val := s.Get("[0]")
-		assert.That(t, val).Equal("w")
-
-		keys := s.Keys()
-		assert.That(t, keys).Equal([]string{"[0]", "[1]"})
-	})
-
-	t.Run("arr-1", func(t *testing.T) {
-		s := NewStorage()
-		fileID := s.AddFile("store_test.go")
-
-		err := s.Set("s[0]", "p", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("s")).True()
-		assert.That(t, s.Has("s[0]")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"s[0]": {0, "p"},
-		})
-		assert.That(t, s.Data()).Equal(map[string]string{
-			"s[0]": "p",
-		})
-
-		err = s.Set("s[1]", "o", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("s")).True()
-		assert.That(t, s.Has("s[0]")).True()
-		assert.That(t, s.Has("s[1]")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"s[0]": {0, "p"},
-			"s[1]": {0, "o"},
-		})
-
-		subKeys, err := s.SubKeys("s")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"0", "1"})
-
-		err = s.Set("s", "w", fileID)
-		assert.Error(t, err).Matches("property conflict at path s")
-		err = s.Set("s.x", "f", fileID)
-		assert.Error(t, err).Matches("property conflict at path s.x")
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"store_test.go": 0,
-		})
-
-		val := s.Get("s.x.y", "default")
-		assert.That(t, val).Equal("default")
-
-		keys := s.Keys()
-		assert.That(t, keys).Equal([]string{
-			"s[0]", "s[1]",
-		})
-	})
-
-	t.Run("map && array", func(t *testing.T) {
-		s := NewStorage()
-		fileID := s.AddFile("store_test.go")
-
-		err := s.Set("a.b[0].c", "123", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("a")).True()
-		assert.That(t, s.Has("a.b")).True()
-		assert.That(t, s.Has("a.b[0]")).True()
-		assert.That(t, s.Has("a.b[0].c")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"a.b[0].c": {0, "123"},
-		})
-		assert.That(t, s.Data()).Equal(map[string]string{
-			"a.b[0].c": "123",
-		})
-
-		err = s.Set("a.b[0].d[0]", "123", fileID)
-		assert.That(t, err).Nil()
-		assert.That(t, s.Has("a")).True()
-		assert.That(t, s.Has("a.b")).True()
-		assert.That(t, s.Has("a.b[0]")).True()
-		assert.That(t, s.Has("a.b[0].d")).True()
-		assert.That(t, s.Has("a.b[0].d[0]")).True()
-		assert.That(t, s.RawData()).Equal(map[string]ValueInfo{
-			"a.b[0].c":    {0, "123"},
-			"a.b[0].d[0]": {0, "123"},
-		})
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"store_test.go": 0,
-		})
-
-		val := s.Get("a.b[0].d[0]")
-		assert.That(t, val).Equal("123")
-
-		keys := s.Keys()
-		assert.That(t, keys).Equal([]string{
-			"a.b[0].c", "a.b[0].d[0]",
-		})
-	})
-
-	t.Run("subkeys with nil root", func(t *testing.T) {
-		s := NewStorage()
-
-		subKeys, err := s.SubKeys("")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Nil()
-
-		subKeys, err = s.SubKeys("any")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Nil()
-	})
-
-	t.Run("get with default value", func(t *testing.T) {
-		s := NewStorage()
-
-		val := s.Get("nonexistent", "default")
-		assert.That(t, val).Equal("default")
-
-		val = s.Get("nonexistent", "first", "second")
-		assert.That(t, val).Equal("first")
-
-		val = s.Get("nonexistent")
-		assert.That(t, val).Equal("")
-	})
-
-	t.Run("add file multiple times", func(t *testing.T) {
-		s := NewStorage()
-
-		fileID1 := s.AddFile("test.go")
-		fileID2 := s.AddFile("test.go")
-		assert.That(t, fileID1).Equal(fileID2)
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"test.go": 0,
-		})
-	})
-
-	t.Run("add multiple files", func(t *testing.T) {
-		s := NewStorage()
-
-		fileID1 := s.AddFile("first.go")
-		fileID2 := s.AddFile("second.go")
-		fileID3 := s.AddFile("third.go")
-
-		assert.That(t, fileID1).Equal(int8(0))
-		assert.That(t, fileID2).Equal(int8(1))
-		assert.That(t, fileID3).Equal(int8(2))
-
-		file := s.RawFile()
-		assert.Map(t, file).Equal(map[string]int8{
-			"first.go":  0,
-			"second.go": 1,
-			"third.go":  2,
-		})
-	})
-
-	t.Run("flatten & store", func(t *testing.T) {
-		m := Flatten(map[string]any{
-			"arr": []any{
-				"abc",
-				"def",
-				map[string]any{
-					"a": "123",
-					"b": "456",
-				},
-				nil,
-				([]any)(nil),
-				(map[string]string)(nil),
-				[]any{},
-				map[string]string{},
-			},
-			"map": map[string]any{
-				"a": "123",
-				"b": "456",
-				"arr": []string{
-					"abc",
-					"def",
-				},
-				"nil":       nil,
-				"nil_arr":   []any(nil),
-				"nil_map":   map[string]string(nil),
-				"empty_arr": []any{},
-				"empty_map": map[string]string{},
-			},
-			"nil":       nil,
-			"nil_arr":   []any(nil),
-			"nil_map":   map[string]string(nil),
-			"empty_arr": []any{},
-			"empty_map": map[string]string{},
-		})
-		s := NewStorage()
-		for k, v := range m {
-			err := s.Set(k, v, 0)
-			assert.Error(t, err).Nil()
-		}
-
-		assert.That(t, s.Get("arr[0]")).Equal("abc")
-		assert.That(t, s.Get("arr[1]")).Equal("def")
-		assert.That(t, s.Get("arr[2].a")).Equal("123")
-		assert.That(t, s.Get("arr[2].b")).Equal("456")
-		assert.That(t, s.Get("arr[3]")).Equal("")
-		assert.That(t, s.Get("arr[4]")).Equal("")
-		assert.That(t, s.Get("arr[5]")).Equal("")
-		assert.That(t, s.Get("arr[6]")).Equal("")
-		assert.That(t, s.Get("arr[7]")).Equal("")
-		assert.That(t, s.Get("map.a")).Equal("123")
-		assert.That(t, s.Get("map.b")).Equal("456")
-		assert.That(t, s.Get("map.arr[0]")).Equal("abc")
-		assert.That(t, s.Get("map.arr[1]")).Equal("def")
-		assert.That(t, s.Get("map.empty_arr")).Equal("")
-		assert.That(t, s.Get("map.empty_map")).Equal("")
-
-		assert.That(t, s.Has("nil")).True()
-		assert.That(t, s.Has("nil_arr")).True()
-		assert.That(t, s.Has("nil_map")).True()
-		assert.That(t, s.Has("map.nil")).True()
-		assert.That(t, s.Has("map.nil_arr")).True()
-		assert.That(t, s.Has("map.nil_map")).True()
-
-		subKeys, err := s.SubKeys("arr")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"0", "1", "2", "3", "4", "5", "6", "7"})
-
-		subKeys, err = s.SubKeys("arr[2]")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"a", "b"})
-
-		subKeys, err = s.SubKeys("map")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"a", "arr", "b", "empty_arr", "empty_map", "nil", "nil_arr", "nil_map"})
-
-		subKeys, err = s.SubKeys("map.arr")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"0", "1"})
-	})
-
-	t.Run("empty containers", func(t *testing.T) {
+	t.Run("basic_operations", func(t *testing.T) {
 		s := NewStorage()
 		fileID := s.AddFile("test.go")
 
-		err := s.Set("empty_arr", "[]", fileID)
+		_, err := s.CheckKey("")
+		assert.Error(t, err).Matches("key is empty")
+		exists, err := s.CheckKey("nonexistent")
 		assert.That(t, err).Nil()
-		assert.That(t, s.Has("empty_arr")).True()
+		assert.That(t, exists).False()
+
+		subKeys, err := s.SubKeys("")
+		assert.That(t, err).Nil()
+		assert.That(t, subKeys).Nil()
+
+		subKeys, err = s.SubKeys("any.path")
+		assert.That(t, err).Nil()
+		assert.That(t, subKeys).Nil()
+
+		keys := s.Keys()
+		assert.That(t, keys).Nil()
+
+		assert.Error(t, s.Set("", "value", fileID)).Matches("key is empty")
+	})
+
+	t.Run("map_operations", func(t *testing.T) {
+		s := NewStorage()
+		fileID := s.AddFile("test.go")
+
+		assert.That(t, s.Set("config.host", "localhost", fileID)).Nil()
+		exists, err := s.CheckKey("config.host")
+		assert.That(t, err).Nil()
+		assert.That(t, exists).True()
+		assert.That(t, s.Get("config.host")).Equal("localhost")
+
+		assert.Error(t, s.Set("config.host.port", "8080", fileID)).
+			Matches("path config.host.port conflicts with existing structure")
+		assert.Error(t, s.Set("config[0]", "value", fileID)).
+			Matches(`type conflict at path config\[0]: expect index but found key`)
+
+		assert.That(t, s.Set("server.name", "web1", fileID)).Nil()
+		assert.That(t, s.Set("server.port", "8080", fileID)).Nil()
+
+		subKeys, err := s.SubKeys("server")
+		assert.That(t, err).Nil()
+		assert.That(t, subKeys).Equal([]string{"name", "port"})
+
+		_, err = s.SubKeys("config.host")
+		assert.Error(t, err).Matches("cannot list subkeys of leaf value at path config.host")
+
+		keys := s.Keys()
+		expected := []string{"config.host", "server.name", "server.port"}
+		assert.That(t, keys).Equal(expected)
+	})
+
+	t.Run("array_operations", func(t *testing.T) {
+		s := NewStorage()
+		fileID := s.AddFile("test.go")
+
+		assert.That(t, s.Set("servers[0]", "web1", fileID)).Nil()
+		assert.That(t, s.Set("servers[1]", "web2", fileID)).Nil()
+
+		exists, err := s.CheckKey("servers[0]")
+		assert.That(t, err).Nil()
+		assert.That(t, exists).True()
+
+		subKeys, err := s.SubKeys("servers")
+		assert.That(t, err).Nil()
+		assert.That(t, subKeys).Equal([]string{"0", "1"})
+
+		assert.Error(t, s.Set("servers.host", "localhost", fileID)).
+			Matches("type conflict at path servers.host: expect key but found index")
+
+		assert.That(t, s.Get("servers[2]", "default")).Equal("default")
+		assert.That(t, s.Get("servers[2]")).Equal("")
+
+		keys := s.Keys()
+		assert.That(t, keys).Equal([]string{"servers[0]", "servers[1]"})
+	})
+
+	t.Run("complex_nested_structures", func(t *testing.T) {
+		s := NewStorage()
+		fileID := s.AddFile("test.go")
+
+		// Test deeply nested mixed structure
+		assert.That(t, s.Set("database.connections[0].host", "localhost", fileID)).Nil()
+		assert.That(t, s.Set("database.connections[0].port", "5432", fileID)).Nil()
+		assert.That(t, s.Set("database.connections[1].host", "remote", fileID)).Nil()
+
+		exists, err := s.CheckKey("database.connections[0].host")
+		assert.That(t, err).Nil()
+		assert.That(t, exists).True()
+
+		subKeys, err := s.SubKeys("database")
+		assert.That(t, err).Nil()
+		assert.That(t, subKeys).Equal([]string{"connections"})
+
+		subKeys, err = s.SubKeys("database.connections")
+		assert.That(t, err).Nil()
+		assert.That(t, subKeys).Equal([]string{"0", "1"})
+
+		subKeys, err = s.SubKeys("database.connections[0]")
+		assert.That(t, err).Nil()
+		assert.That(t, subKeys).Equal([]string{"host", "port"})
+
+		// Test value retrieval
+		assert.That(t, s.Get("database.connections[0].host")).Equal("localhost")
+		assert.That(t, s.Get("database.connections[99]", "default")).Equal("default")
+
+		keys := s.Keys()
+		expected := []string{
+			"database.connections[0].host",
+			"database.connections[0].port",
+			"database.connections[1].host",
+		}
+		assert.That(t, keys).Equal(expected)
+	})
+
+	t.Run("file_management", func(t *testing.T) {
+		s := NewStorage()
+
+		fileID1 := s.AddFile("config.json")
+		fileID2 := s.AddFile("config.json")
+		assert.That(t, fileID1).Equal(fileID2)
+
+		fileID3 := s.AddFile("settings.yaml")
+		fileID4 := s.AddFile("defaults.toml")
+
+		assert.That(t, fileID1).Equal(int8(0))
+		assert.That(t, fileID3).Equal(int8(1))
+		assert.That(t, fileID4).Equal(int8(2))
+
+		// Verify file mapping integrity
+		assert.That(t, len(s.file)).Equal(3)
+		assert.That(t, s.file["config.json"]).Equal(int8(0))
+		assert.That(t, s.file["settings.yaml"]).Equal(int8(1))
+	})
+
+	t.Run("merge_operations", func(t *testing.T) {
+		s1 := NewStorage()
+		s2 := NewStorage()
+
+		fileID1 := s1.AddFile("config1.json")
+		err := s1.Set("server.host", "localhost", fileID1)
+		assert.Error(t, err).Nil()
+		err = s1.Set("server.port", "8080", fileID1)
+		assert.Error(t, err).Nil()
+
+		fileID2 := s2.AddFile("config2.json")
+		err = s2.Set("server.ssl", "true", fileID2)
+		assert.Error(t, err).Nil()
+		err = s2.Set("database.url", "postgres://...", fileID2)
+		assert.Error(t, err).Nil()
+
+		err = s1.Merge(s2)
+		assert.That(t, err).Nil()
+
+		// Verify merged data
+		assert.That(t, s1.Get("server.host")).Equal("localhost")
+		assert.That(t, s1.Get("server.ssl")).Equal("true")
+		assert.That(t, s1.Get("database.url")).Equal("postgres://...")
+
+		// Test file mapping preservation
+		assert.That(t, len(s1.file)).Equal(2)
+		assert.That(t, s1.file["config1.json"]).Equal(int8(0))
+		assert.That(t, s1.file["config2.json"]).Equal(int8(1))
+
+		s3 := NewStorage()
+		testMap := map[string]any{
+			"logging": map[string]any{
+				"level": "info",
+				"file":  "/var/log/app.log",
+			},
+			"features": []string{"auth", "metrics"},
+		}
+
+		err = s3.MergeMap(testMap, "dynamic_config.json")
+		assert.That(t, err).Nil()
+
+		assert.That(t, s3.Get("logging.level")).Equal("info")
+		assert.That(t, s3.Get("features[0]")).Equal("auth")
+	})
+
+	t.Run("empty_containers", func(t *testing.T) {
+		s := NewStorage()
+		fileID := s.AddFile("test.go")
+
+		// Test empty array
+		assert.That(t, s.Set("empty_arr", "[]", fileID)).Nil()
+		exists, err := s.CheckKey("empty_arr")
+		assert.That(t, err).Nil()
+		assert.That(t, exists).True()
 
 		_, inData := s.data["empty_arr"]
 		_, inEmpty := s.empty["empty_arr"]
 		assert.That(t, inData).False()
 		assert.That(t, inEmpty).True()
 
-		err = s.Set("empty_obj", "{}", fileID)
+		// Test empty object
+		assert.That(t, s.Set("empty_obj", "{}", fileID)).Nil()
+		exists, err = s.CheckKey("empty_obj")
 		assert.That(t, err).Nil()
-		assert.That(t, s.Has("empty_obj")).True()
+		assert.That(t, exists).True()
 
 		_, inData = s.data["empty_obj"]
 		_, inEmpty = s.empty["empty_obj"]
 		assert.That(t, inData).False()
 		assert.That(t, inEmpty).True()
 
-		err = s.Set("nil_val", "<nil>", fileID)
+		// Test nil value
+		assert.That(t, s.Set("nil_val", "&lt;nil&gt;", fileID)).Nil()
+		exists, err = s.CheckKey("nil_val")
 		assert.That(t, err).Nil()
-		assert.That(t, s.Has("nil_val")).True()
+		assert.That(t, exists).True()
 
 		_, inData = s.data["nil_val"]
 		_, inEmpty = s.empty["nil_val"]
-		assert.That(t, inData).False()
-		assert.That(t, inEmpty).True()
+		assert.That(t, inData).True()   // nil value stored in data
+		assert.That(t, inEmpty).False() // not in empty
+
+		// Test empty container extension restriction
+		assert.Error(t, s.Set("empty_arr[0]", "item", fileID)).NotNil()
 
 		subKeys, err := s.SubKeys("empty_arr")
 		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{})
+		assert.That(t, subKeys).Nil()
 
 		subKeys, err = s.SubKeys("empty_obj")
 		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{})
+		assert.That(t, subKeys).Nil()
 	})
 
-	t.Run("RawData combines data and empty", func(t *testing.T) {
+	t.Run("lookup_and_edge_cases", func(t *testing.T) {
 		s := NewStorage()
 		fileID := s.AddFile("test.go")
 
-		err := s.Set("regular", "value", fileID)
-		assert.That(t, err).Nil()
+		assert.That(t, s.Set("config.api_key", "secret123", fileID)).Nil()
 
-		err = s.Set("empty", "[]", fileID)
-		assert.That(t, err).Nil()
+		value, exists := s.Lookup("config.api_key")
+		assert.That(t, exists).True()
+		assert.That(t, value).Equal("secret123")
 
-		rawData := s.RawData()
-		assert.That(t, len(rawData)).Equal(2)
-		assert.That(t, rawData["regular"]).Equal(ValueInfo{0, "value"})
-		assert.That(t, rawData["empty"]).Equal(ValueInfo{0, "[]"})
+		_, exists = s.Lookup("nonexistent")
+		assert.That(t, exists).False()
 
-		s2 := NewStorage()
-		err = s2.Set("key", "value", 0)
-		assert.That(t, err).Nil()
+		// Test edge cases for Get with multiple defaults
+		assert.That(t, s.Get("missing", "first", "second")).Equal("first")
+		assert.That(t, s.Get("missing")).Equal("")
 
-		rawData2 := s2.RawData()
-		assert.That(t, len(rawData2)).Equal(1)
-		assert.That(t, rawData2["key"]).Equal(ValueInfo{0, "value"})
+		// Test key with special characters
+		assert.That(t, s.Set("config.\"quoted\"", "value", fileID)).Nil()
+		assert.That(t, s.Get("config.\"quoted\"")).Equal("value")
 	})
 
-	t.Run("path type conflicts", func(t *testing.T) {
+	t.Run("subtree_operations", func(t *testing.T) {
 		s := NewStorage()
 		fileID := s.AddFile("test.go")
 
-		err := s.Set("conflict[0]", "value", fileID)
+		assert.That(t, s.Set("users.admin.name", "Alice", fileID)).Nil()
+		assert.That(t, s.Set("users.admin.role", "admin", fileID)).Nil()
+		assert.That(t, s.Set("users.guest.name", "Bob", fileID)).Nil()
+		assert.That(t, s.Set("settings.debug", "true", fileID)).Nil()
+
+		subtree, err := s.SubTree("users.admin")
 		assert.That(t, err).Nil()
+		assert.That(t, len(subtree)).Equal(2)
+		assert.That(t, subtree["name"]).Equal("Alice")
+		assert.That(t, subtree["role"]).Equal("admin")
 
-		err = s.Set("conflict.key", "value", fileID)
-		assert.Error(t, err).Matches("property conflict at path conflict.key")
-
-		s2 := NewStorage()
-		fileID2 := s2.AddFile("test.go")
-
-		err = s2.Set("conflict.key", "value", fileID2)
+		subtree, err = s.SubTree("nonexistent")
 		assert.That(t, err).Nil()
+		assert.That(t, len(subtree)).Equal(0)
 
-		err = s2.Set("conflict[0]", "value", fileID2)
-		assert.Error(t, err).Matches("property conflict at path conflict\\[0]")
+		_, err = s.SubTree("")
+		assert.Error(t, err).Matches("key is empty")
+		_, err = s.SubTree("users.admin.name")
+		assert.Error(t, err).Matches("cannot list subkeys of leaf value at path users.admin.name")
+
+		subtree, err = s.SubTree("users")
+		assert.That(t, err).Nil()
+		assert.That(t, len(subtree)).Equal(3) // admin.name, admin.role, guest.name
 	})
 
-	t.Run("deep nesting", func(t *testing.T) {
+	t.Run("dump_functionality", func(t *testing.T) {
 		s := NewStorage()
-		fileID := s.AddFile("test.go")
+		fileID1 := s.AddFile("config.json")
+		fileID2 := s.AddFile("secrets.json")
 
-		err := s.Set("a.b.c.d.e.f.g.h.i.j", "deep", fileID)
+		err := s.Set("server.host", "localhost", fileID1)
+		assert.Error(t, err).Nil()
+		err = s.Set("server.port", "8080", fileID1)
+		assert.Error(t, err).Nil()
+		err = s.Set("database.password", "secret", fileID2)
+		assert.Error(t, err).Nil()
+		err = s.Set("database.url", "postgres://...", fileID2)
+		assert.Error(t, err).Nil()
+
+		var buf bytes.Buffer
+		err = s.Dump(&buf)
 		assert.That(t, err).Nil()
 
-		assert.That(t, s.Has("a")).True()
-		assert.That(t, s.Has("a.b")).True()
-		assert.That(t, s.Has("a.b.c")).True()
-		assert.That(t, s.Has("a.b.c.d.e.f.g.h.i")).True()
-		assert.That(t, s.Has("a.b.c.d.e.f.g.h.i.j")).True()
-		assert.That(t, s.Get("a.b.c.d.e.f.g.h.i.j")).Equal("deep")
+		output := buf.String()
+		// Verify output contains expected content
+		assert.That(t, strings.Contains(output, "config.json:")).True()
+		assert.That(t, strings.Contains(output, "secrets.json:")).True()
+		assert.That(t, strings.Contains(output, "server.host=localhost")).True()
+		assert.That(t, strings.Contains(output, "database.password=secret")).True()
 
-		subKeys, err := s.SubKeys("a")
+		// Test Dump with empty storage
+		emptyStorage := NewStorage()
+		var emptyBuf bytes.Buffer
+		err = emptyStorage.Dump(&emptyBuf)
 		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"b"})
-
-		subKeys, err = s.SubKeys("a.b.c.d.e.f.g.h.i")
-		assert.That(t, err).Nil()
-		assert.That(t, subKeys).Equal([]string{"j"})
+		assert.That(t, emptyBuf.String()).Equal("")
 	})
 }

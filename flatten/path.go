@@ -17,6 +17,7 @@
 package flatten
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,18 @@ const (
 	PathTypeKey   PathType = iota // A named key in a map.
 	PathTypeIndex                 // A numeric index in a list.
 )
+
+// String returns the string representation of PathType.
+func (t PathType) String() string {
+	switch t {
+	case PathTypeKey:
+		return "key"
+	case PathTypeIndex:
+		return "index"
+	default:
+		return fmt.Sprintf("PathType(%d)", int8(t))
+	}
+}
 
 // Path represents a single segment in a parsed key path.
 // A path is composed of multiple Path elements that can be joined or split.

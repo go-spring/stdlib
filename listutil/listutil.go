@@ -18,7 +18,13 @@ package listutil
 
 import (
 	"container/list"
+	"io"
 )
+
+// SliceOf returns a slice containing the provided items.
+func SliceOf[T any](items ...T) []T {
+	return items
+}
 
 // ListOf creates a new list.List and populates it with the provided items.
 //
@@ -46,4 +52,15 @@ func AllOfList[T any](l *list.List) []T {
 		ret = append(ret, e.Value.(T))
 	}
 	return ret
+}
+
+// WriteStrings writes the provided strings to w in order.
+// It returns the first error encountered, if any.
+func WriteStrings(w io.Writer, values ...string) error {
+	for _, value := range values {
+		if _, err := io.WriteString(w, value); err != nil {
+			return err
+		}
+	}
+	return nil
 }

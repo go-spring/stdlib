@@ -195,7 +195,7 @@ func isNil(v reflect.Value) bool {
 		reflect.Func,
 		reflect.Interface,
 		reflect.Map,
-		reflect.Ptr,
+		reflect.Pointer,
 		reflect.Slice,
 		reflect.UnsafePointer:
 		return v.IsNil()
@@ -287,7 +287,7 @@ func (a *Assertion) TypeOf(expect any, msg ...string) *Assertion {
 
 	e1 := reflect.TypeOf(a.v)
 	e2 := reflect.TypeOf(expect)
-	if e2.Kind() == reflect.Ptr && e2.Elem().Kind() == reflect.Interface {
+	if e2.Kind() == reflect.Pointer && e2.Elem().Kind() == reflect.Interface {
 		e2 = e2.Elem()
 	}
 
@@ -308,7 +308,7 @@ func (a *Assertion) Implements(expect any, msg ...string) *Assertion {
 
 	e1 := reflect.TypeOf(a.v)
 	e2 := reflect.TypeOf(expect)
-	if e2.Kind() == reflect.Ptr {
+	if e2.Kind() == reflect.Pointer {
 		if e2.Elem().Kind() == reflect.Interface {
 			e2 = e2.Elem()
 		} else {

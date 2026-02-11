@@ -99,7 +99,7 @@ func flattenValue(key string, val any, result map[string]string) {
 			subValue := v.Index(i).Interface()
 			flattenValue(subKey, subValue, result)
 		}
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		if v.IsNil() { // typed nil interface or pointer
 			result[key] = "<nil>"
 			return

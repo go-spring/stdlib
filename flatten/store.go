@@ -14,88 +14,131 @@
  * limitations under the License.
  */
 
-// Package flatten provides utilities for handling hierarchical key/value
-// data structures that commonly appear in configuration formats such
-// as JSON, YAML, or TOML. It is designed to transform nested data into
-// a flat representation, while preserving enough metadata to reconstruct
-// paths, detect conflicts, and manage data from multiple sources.
+// Package flatten provides utilities for validating the *structure* of
+// hierarchical configuration data by converting it into a flat key space.
 //
-// Key features include:
+// The primary design goal of this package is *structural key validation* for
+// structured configuration formats such as JSON, YAML, or TOML. Rather than
+// operating directly on nested maps and slices via reflection, flatten converts
+// hierarchical data into a flat key/value representation while retaining enough
+// structural metadata to:
 //
-//   - Flattening: Nested maps, slices, and arrays can be converted into
-//     a flat map[string]string using dot notation for maps and index notation
-//     for arrays/slices. For example, {"db": {"hosts": ["a", "b"]}}
-//     becomes {"db.hosts[0]": "a", "db.hosts[1]": "b"}.
+//   - Validate key paths against structural constraints
+//   - Detect property conflicts early (e.g. map vs array, value vs container)
+//   - Support deterministic traversal and querying
+//   - Track value provenance across multiple configuration sources
 //
-//   - Path handling: The package defines a Path abstraction that represents
-//     hierarchical keys as a sequence of typed segments (map keys or array
-//     indices). Paths can be split from strings like "foo.bar[0]" or joined
-//     back into their string form.
+// Flattened keys use:
 //
-//   - Storage: A Storage type manages a collection of flattened key/value
-//     pairs. It builds and maintains a hierarchical tree internally to
-//     prevent property conflicts (e.g., treating the same key as both a
-//     map and a value). Storage also associates values with the files they
-//     originated from, which allows multi-file merging and provenance tracking.
+//   - Dot notation for map/object fields:     "db.host"
+//   - Index notation for arrays/slices:       "servers[0].port"
 //
-//   - Querying: The Storage type provides helper methods for retrieving
-//     values, checking for the existence of keys, enumerating subkeys,
-//     and iterating in a deterministic order.
+// For example:
+//
+//	{"db": {"hosts": ["a", "b"]}}
+//
+// becomes:
+//
+//	{
+//	  "db.hosts[0]": "a",
+//	  "db.hosts[1]": "b",
+//	}
+//
+// Internally, the package deliberately separates *structure* from *values*:
+//
+//   - Structure is tracked by an internal hierarchical tree that models paths
+//     as typed segments (map keys or array indices) and enforces consistency.
+//   - Leaf values are stored in flat maps keyed by normalized string paths.
+//
+// This separation allows flatten to perform strict structural validation
+// without duplicating data, while still providing a simple flat representation
+// for querying, comparison, merging, and diffing.
+//
+// Key components include:
+//
+//   - Path: a typed abstraction over hierarchical keys, supporting parsing
+//     from and formatting to string paths such as "foo.bar[0]".
+//   - Storage: a container for flattened key/value pairs that maintains the
+//     internal structure tree, prevents conflicting writes, and associates
+//     values with their source files for provenance tracking.
+//   - Query helpers: utilities for existence checks, subkey enumeration, and
+//     deterministic iteration.
 //
 // Typical use cases:
 //
-//   - Normalizing configuration files from different sources into a flat
-//     key/value map for comparison, merging, or diffing.
-//   - Querying nested data using simple string paths without dealing with
-//     reflection or nested map structures directly.
-//   - Building tools that need to unify structured data from multiple files
-//     while preserving provenance information and preventing conflicts.
-//
-// Overall, flatten acts as a bridge between deeply nested structured data
-// and flat, queryable representations that are easier to work with in
-// configuration management, testing, or data transformation pipelines.
+//   - Normalizing configuration files from multiple sources for comparison,
+//     merging, or diffing.
+//   - Querying deeply nested configuration data using simple string paths
+//     without dealing with reflection or nested map structures directly.
+//   - Building configuration tooling that requires strict structural guarantees
+//     and reproducible traversal order.
 package flatten
 
 import (
+	"io"
 	"maps"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/go-spring/stdlib/errutil"
+	"github.com/go-spring/stdlib/listutil"
 	"github.com/go-spring/stdlib/ordered"
 )
 
-// treeNode represents a node in the hierarchical tree that models
-// the structure of keys in Storage. Each node corresponds to either
-// an object/map field or an array element, depending on its PathType.
+// treeNode represents a structural node in the internal hierarchy tree.
 //
-// Internal invariant:
-//   - treeNode exists only to describe the structure (not to store values).
-//   - Leaf nodes are represented in Storage.data or Storage.empty instead
-//     of treeNode itself.
+// A treeNode exists solely to model *structure*, not to store values.
+// Each node corresponds to a single path segment and is typed as either:
+//
+//   - a map/object key
+//   - an array index
+//
+// Invariants:
+//
+//   - treeNode never stores leaf values
+//   - leaf values are stored exclusively in Storage.data or Storage.empty
+//   - the Type of a node determines the expected type of all its children
+//   - a nil *treeNode represents a leaf position (no further structure)
+//
+// This design allows early detection of invalid configurations such as:
+//
+//   - treating the same path as both a map and an array
+//   - assigning a value where a container already exists
 type treeNode struct {
 	Type PathType
 	Data map[string]*treeNode
 }
 
-// ValueInfo holds both the string value and the index of the file
-// from which the value originated. This enables tracking of data provenance.
+// ValueInfo stores a flattened value together with its source information.
+//
+// The File field records the Storage-local numeric identifier of the
+// configuration file from which the value originated. This enables
+// provenance tracking and deterministic merging behavior across multiple inputs.
 type ValueInfo struct {
 	File  int8
 	Value string
 }
 
-// Storage manages hierarchical key/value data with structural validation.
-// It provides:
+// Storage is the central data structure of this package.
 //
-//   - A hierarchical tree (root) for detecting structural conflicts.
-//   - A flat map (data) for quick value lookups.
-//   - An empty map (empty) for representing empty containers like "[]" or "{}".
-//   - A file map for mapping file names to numeric indexes, allowing traceability.
+// It maintains three logically distinct layers:
 //
-// Invariants:
-//   - `root` stores only the tree structure (no leaf values).
-//   - `data` stores leaf key-value pairs.
-//   - `empty` stores leaf paths that represent empty arrays/maps or nil values.
+//  1. root  – a hierarchical tree that models *only structure*
+//  2. data  – flattened leaf key/value pairs
+//  3. empty – flattened keys representing empty containers or nil values
+//
+// empty is tracked separately to preserve leaf semantics for empty
+// containers and to prevent illegal path extension.
+//
+// Additionally, Storage tracks file provenance using a compact int8 index.
+//
+// Core invariants:
+//
+//   - root contains no values, only structure
+//   - data contains only concrete leaf values
+//   - empty contains only leaf paths representing [], {}, or <nil>
+//   - a single path cannot simultaneously be a container and a value
 type Storage struct {
 	root  *treeNode
 	data  map[string]ValueInfo
@@ -112,73 +155,37 @@ func NewStorage() *Storage {
 	}
 }
 
-// Keys returns all flattened keys currently stored in Storage,
-// sorted lexicographically for consistent iteration.
-func (s *Storage) Keys() []string {
-	return ordered.MapKeys(s.data)
-}
-
-// Data returns a simplified flattened key → string value mapping,
-// omitting file index information.
-func (s *Storage) Data() map[string]string {
-	m := make(map[string]string)
-	for k, v := range s.data {
-		m[k] = v.Value
-	}
-	return m
-}
-
-// RawData exposes the internal flattened key → ValueInfo mapping,
-// combining both data and empty containers if any exist.
+// Keys returns all flattened keys currently stored in the Storage.
 //
-// WARNING: This method leaks internal state and should be used
-// with caution (e.g., for debugging or low-level access).
-func (s *Storage) RawData() map[string]ValueInfo {
-	if len(s.empty) > 0 {
-		m := make(map[string]ValueInfo)
-		maps.Copy(m, s.data)
-		maps.Copy(m, s.empty)
-		return m
-	}
-	return s.data
+// This includes both concrete values and empty-container markers.
+// The result is sorted lexicographically to ensure deterministic iteration.
+func (s *Storage) Keys() []string {
+	var keys []string
+	keys = slices.AppendSeq(keys, maps.Keys(s.data))
+	keys = slices.AppendSeq(keys, maps.Keys(s.empty))
+	sort.Strings(keys)
+	return keys
 }
 
-// RawFile exposes the internal file name → index mapping.
-func (s *Storage) RawFile() map[string]int8 {
-	return s.file
-}
-
-// AddFile registers a file name in the Storage and assigns it
-// a unique int8 index if not already registered.
-// Returns the index assigned to the given file.
+// AddFile registers a configuration source and assigns it a compact int8 ID.
+//
+// If the file has already been registered, the existing ID is returned.
+//
+// The total number of files is limited to 127, which is considered sufficient
+// for typical configuration-merging scenarios.
 func (s *Storage) AddFile(file string) int8 {
-	idx, ok := s.file[file]
-	if !ok {
-		idx = int8(len(s.file))
-		s.file[file] = idx
+	if i, ok := s.file[file]; ok {
+		return i
 	}
-	return idx
+	i := int8(len(s.file))
+	s.file[file] = i
+	return i
 }
 
-// Merge adds all key/value pairs from the given Storage to the Storage.
-func (s *Storage) Merge(p *Storage) error {
-	rawFile := p.RawFile()
-	newFiles := make(map[string]int8)
-	oldFiles := make([]string, len(rawFile))
-	for file, fileID := range rawFile {
-		newFiles[file] = s.AddFile(file)
-		oldFiles[fileID] = file
-	}
-	for key, r := range p.RawData() {
-		fileID := newFiles[oldFiles[r.File]]
-		if err := s.Set(key, r.Value, fileID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// MergeMap adds all key/value pairs from the given map to the Storage.
+// MergeMap flattens a nested map and inserts all resulting key/value pairs
+// into the Storage under the given file identity.
+//
+// Structural conflicts are detected eagerly during insertion.
 func (s *Storage) MergeMap(data map[string]any, file string) error {
 	fileID := s.AddFile(file)
 	for key, val := range Flatten(data) {
@@ -189,73 +196,108 @@ func (s *Storage) MergeMap(data map[string]any, file string) error {
 	return nil
 }
 
-// Has checks whether a given key (or path) exists in the Storage.
-// Returns true if the key refers to either a stored value, an empty
-// container, or a valid intermediate node in the hierarchy.
-func (s *Storage) Has(key string) bool {
-	if key == "" || s.root == nil {
-		return false
+// Merge imports all values from another Storage instance.
+//
+// File identities from the source Storage are remapped to local IDs while
+// preserving provenance semantics.
+//
+// Note: When merging Storages with identical filenames, the provenance
+// information may become ambiguous as files with the same name from
+// different sources will share the same file ID in the merged result.
+func (s *Storage) Merge(p *Storage) error {
+
+	// source_filename -> target_file_id
+	newFileIDMap := make(map[string]int8)
+	for file := range p.file {
+		newFileIDMap[file] = s.AddFile(file)
 	}
 
-	// Check for empty containers.
-	if _, ok := s.empty[key]; ok {
-		return true
+	// source_file_id -> source_filename
+	oldFileIDMap := make(map[int8]string)
+	for file, fileID := range p.file {
+		oldFileIDMap[fileID] = file
 	}
 
-	// Check for stored values.
-	if _, ok := s.data[key]; ok {
-		return true
-	}
-
-	path, err := SplitPath(key)
-	if err != nil {
-		return false
-	}
-
-	n := s.root
-	for _, node := range path {
-		if n == nil || node.Type != n.Type {
-			return false
+	for _, m := range listutil.SliceOf(p.data, p.empty) {
+		for key, r := range m {
+			// source_file_id -> source_filename -> target_file_id
+			fileID := newFileIDMap[oldFileIDMap[r.File]]
+			if err := s.Set(key, r.Value, fileID); err != nil {
+				return err
+			}
 		}
-		v, ok := n.Data[node.Elem]
-		if !ok {
-			return false
-		}
-		n = v
 	}
-	return true
+	return nil
 }
 
-// Get retrieves the value associated with the given flattened key.
-// If the key is not found and a default value is provided, the default
-// is returned instead. Only the first default value is considered.
-func (s *Storage) Get(key string, def ...string) string {
-	v, ok := s.data[key]
-	if !ok && len(def) > 0 {
-		return def[0]
-	}
-	return v.Value
-}
-
-// Lookup retrieves the value associated with the given flattened key.
-// Returns the value and true if the key is found, or an empty string and
-// false if the key is not found.
+// Lookup retrieves the value associated with a flattened key.
+//
+// The key must refer to a concrete leaf value.
+// Intermediate nodes and empty-container markers are intentionally excluded.
 func (s *Storage) Lookup(key string) (string, bool) {
-	v, ok := s.data[key]
-	if !ok {
-		return "", false
+	if v, ok := s.data[key]; ok {
+		return v.Value, true
 	}
-	return v.Value, true
+	return "", false
 }
 
-// Set inserts or updates a flattened key with the given value and
-// the index of the file it originated from.
+// Get retrieves the value associated with a flattened key, or returns a default.
 //
-// It validates the path to prevent structural conflicts:
-//   - Cannot store a value where a container node already exists.
-//   - Cannot change an array branch into a map branch or vice versa.
+// Only concrete leaf values are considered valid lookup targets.
+// If the key does not exist, the first provided default value (if any) is returned.
+func (s *Storage) Get(key string, def ...string) string {
+	if v, ok := s.data[key]; ok {
+		return v.Value
+	}
+	if len(def) == 0 {
+		return ""
+	}
+	return def[0]
+}
+
+// checkNode validates that the current path segment is compatible with
+// the existing structural tree, and reports any structural conflicts.
+func checkNode(s *Storage, n *treeNode, pathNode Path, path []Path, i int) error {
+	if n == nil {
+		tempPath := JoinPath(path[:i+1])
+
+		// The path previously terminated at an empty container (e.g. a.b = []),
+		// and the caller is now attempting to extend it (e.g. a.b.c = 3).
+		if _, ok := s.empty[tempPath]; ok {
+			return errutil.Explain(nil, "cannot extend path %s: empty container is a leaf", tempPath)
+		}
+
+		// The path previously terminated at a concrete value (e.g. a.b = 1),
+		// and the caller is now attempting to create a child node (e.g. a.b.c = 2).
+		if _, ok := s.data[tempPath]; ok {
+			return errutil.Explain(nil, "cannot extend path %s: value is a leaf", tempPath)
+		}
+
+		// This branch should be unreachable under normal invariants.
+		// It is kept as a defensive fallback in case of internal inconsistency.
+		return errutil.Explain(nil, "path %s conflicts with existing structure", tempPath)
+	}
+	if pathNode.Type != n.Type {
+		// The expected path segment type (map key vs array index) does not
+		// match the existing structural node type, indicating a type conflict
+		// such as treating the same path as both a map and an array.
+		return errutil.Explain(nil, "type conflict at path %s: expect %s but found %s",
+			JoinPath(path[:i+1]), pathNode.Type, n.Type)
+	}
+	return nil
+}
+
+// Set inserts or updates a flattened key/value pair while enforcing
+// structural consistency.
 //
-// Returns an error if a structural conflict is detected.
+// During insertion, the key path is validated against the internal tree to
+// ensure that:
+//
+//   - a value is not written where a container already exists
+//   - a map branch is not reinterpreted as an array branch (or vice versa)
+//   - no partial prefix of the key conflicts with existing structure
+//
+// Any structural violation results in an immediate error.
 func (s *Storage) Set(key string, val string, file int8) error {
 	if key == "" {
 		return errutil.Explain(nil, "key is empty")
@@ -266,7 +308,8 @@ func (s *Storage) Set(key string, val string, file int8) error {
 		return err
 	}
 
-	// Initialize root if it's the first insertion
+	// Initialize the root node on first insertion.
+	// The root type is fixed and must remain consistent thereafter.
 	if s.root == nil {
 		s.root = &treeNode{
 			Type: path[0].Type,
@@ -276,8 +319,8 @@ func (s *Storage) Set(key string, val string, file int8) error {
 
 	n := s.root
 	for i, pathNode := range path {
-		if n == nil || pathNode.Type != n.Type {
-			return errutil.Explain(nil, "property conflict at path %s", JoinPath(path[:i+1]))
+		if err = checkNode(s, n, pathNode, path, i); err != nil {
+			return err
 		}
 		v, ok := n.Data[pathNode.Elem]
 		if !ok {
@@ -291,31 +334,90 @@ func (s *Storage) Set(key string, val string, file int8) error {
 		}
 		n = v
 	}
+
 	if n != nil {
-		return errutil.Explain(nil, "property conflict at path %s", key)
+		// A structural node already exists at this path, which means the key
+		// refers to a container (map or array). Overwriting a container with
+		// a leaf value is not allowed.
+		return errutil.Explain(nil, "cannot overwrite path %s", key)
 	}
 
 	// Store the value or empty container
 	switch val {
 	case "[]", "{}", "<nil>":
+		if _, ok := s.data[key]; ok {
+			return errutil.Explain(nil, "cannot overwrite path %s", key)
+		}
+		// Value overwrites are allowed to support configuration merging.
 		s.empty[key] = ValueInfo{file, val}
 	default:
+		if _, ok := s.empty[key]; ok {
+			return errutil.Explain(nil, "cannot overwrite path %s", key)
+		}
+		// Value overwrites are allowed to support configuration merging.
 		s.data[key] = ValueInfo{file, val}
 	}
 	return nil
 }
 
-// SubKeys returns the immediate child keys under the given hierarchical path.
+// CheckKey determines whether a key or path exists within the Storage.
 //
-// For example, if Storage contains keys:
+// A key is considered to exist if it refers to:
 //
-//	a.b.c
-//	a.b.d
+//   - a concrete leaf value
+//   - an explicitly stored empty container
+//   - a valid intermediate structural node
 //
-// then SubKeys("a.b") returns ["c", "d"].
+// Structural conflicts encountered during traversal are reported as errors.
+func (s *Storage) CheckKey(key string) (exists bool, err error) {
+	if key == "" {
+		return false, errutil.Explain(nil, "key is empty")
+	}
+
+	// Not initialized yet
+	if s.root == nil {
+		return false, nil
+	}
+
+	if _, ok := s.empty[key]; ok {
+		return true, nil
+	}
+
+	if _, ok := s.data[key]; ok {
+		return true, nil
+	}
+
+	path, err := SplitPath(key)
+	if err != nil {
+		return false, err
+	}
+
+	n := s.root
+	for i, pathNode := range path {
+		if err = checkNode(s, n, pathNode, path, i); err != nil {
+			return false, err
+		}
+		v, ok := n.Data[pathNode.Elem]
+		if !ok {
+			return false, nil
+		}
+		n = v
+	}
+	return true, nil
+}
+
+// SubKeys returns the immediate child keys of a container path.
 //
-// If the path points to a leaf value or structural conflict, an error is returned.
-// If the path does not exist, it returns nil.
+// The path may refer to either a map or an array; child keys are returned
+// uniformly as strings (map keys or numeric indices).
+//
+// Behavior:
+//
+//   - If the path refers to a leaf value, an error is returned
+//   - If the path does not exist, nil is returned
+//   - If the path refers to an empty container, an empty slice is returned
+//
+// An empty key indicates traversal starting from the root node.
 func (s *Storage) SubKeys(key string) (_ []string, err error) {
 	var path []Path
 	if key != "" {
@@ -324,24 +426,25 @@ func (s *Storage) SubKeys(key string) (_ []string, err error) {
 		}
 	}
 
+	// Not initialized yet
 	if s.root == nil {
 		return nil, nil
 	}
 
-	// If the path is stored as an empty container, it has no children.
 	if _, ok := s.empty[key]; ok {
-		return []string{}, nil
+		return nil, nil
 	}
 
-	// If the path is a leaf value, it's a conflict for requesting sub-keys.
 	if _, ok := s.data[key]; ok {
-		return nil, errutil.Explain(nil, "property conflict at path %s", key)
+		// Leaf values do not have child keys. Attempting to enumerate
+		// subkeys on a leaf indicates a misuse of the API.
+		return nil, errutil.Explain(nil, "cannot list subkeys of leaf value at path %s", key)
 	}
 
 	n := s.root
 	for i, pathNode := range path {
-		if n == nil || pathNode.Type != n.Type {
-			return nil, errutil.Explain(nil, "property conflict at path %s", JoinPath(path[:i+1]))
+		if err = checkNode(s, n, pathNode, path, i); err != nil {
+			return nil, err
 		}
 		v, ok := n.Data[pathNode.Elem]
 		if !ok {
@@ -349,30 +452,67 @@ func (s *Storage) SubKeys(key string) (_ []string, err error) {
 		}
 		n = v
 	}
-
-	if n == nil {
-		return []string{}, nil
-	}
 	return ordered.MapKeys(n.Data), nil
 }
 
-// SubMap returns a map of the immediate child keys under the given hierarchical path.
-func (s *Storage) SubMap(key string) (map[string]string, error) {
+// SubTree extracts all descendant key/value pairs under the given key.
+//
+// Returned keys have the prefix removed. The result may include empty
+// container markers ([] / {} / <nil>), allowing reconstruction of a
+// Storage instance if desired.
+//
+// The key must not be empty.
+func (s *Storage) SubTree(key string) (map[string]string, error) {
+	if key == "" {
+		return nil, errutil.Explain(nil, "key is empty")
+	}
 
+	// Validate the key. In particular, leaf values cannot have subtrees,
+	// and any structural conflict should be reported as an error.
 	if _, err := s.SubKeys(key); err != nil {
 		return nil, err
 	}
 
-	m := make(map[string]string)
-	for k, v := range s.RawData() {
-		i := strings.Index(k, key)
-		if i < 0 {
-			continue
+	r := make(map[string]string)
+	for _, m := range listutil.SliceOf(s.data, s.empty) {
+		for k, v := range m {
+			str, ok := strings.CutPrefix(k, key)
+			if !ok || str == "" {
+				continue
+			}
+			if c := str[0]; c != '.' && c != '[' {
+				continue
+			}
+			r[str[1:]] = v.Value
 		}
-		if c := k[i+1]; c != '.' && c != '[' {
-			continue
-		}
-		m[k[i+1:]] = v.Value
 	}
-	return m, nil
+	return r, nil
+}
+
+// Dump writes the contents of Storage to the given writer in a
+// human-readable, deterministic format grouped by source file.
+func (s *Storage) Dump(w io.Writer) error {
+	keys := s.Keys()
+	for _, file := range ordered.MapKeys(s.file) {
+		if err := listutil.WriteStrings(w, file, ":\n"); err != nil {
+			return errutil.Explain(err, "failed to dump")
+		}
+		fileID := s.file[file]
+		for _, key := range keys {
+			r, ok := s.data[key]
+			if !ok {
+				r, ok = s.empty[key]
+				if !ok {
+					continue
+				}
+			}
+			if r.File != fileID {
+				continue
+			}
+			if err := listutil.WriteStrings(w, "  ", key, "=", r.Value, "\n"); err != nil {
+				return errutil.Explain(err, "failed to dump")
+			}
+		}
+	}
+	return nil
 }

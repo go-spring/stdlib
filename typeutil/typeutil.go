@@ -148,7 +148,7 @@ func IsBeanType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface:
 		return true
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return t.Elem().Kind() == reflect.Struct
 	default:
 		return false
