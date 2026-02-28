@@ -173,6 +173,7 @@ func TestGoValue(t *testing.T) {
 	t.Run("context value inheritance with withoutCancel", func(t *testing.T) {
 		key := "test_key"
 		value := "test_value"
+		// nolint: staticcheck
 		ctx := context.WithValue(context.Background(), key, value)
 		ctx, cancel := context.WithCancel(ctx)
 		cancel()

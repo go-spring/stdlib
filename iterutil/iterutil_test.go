@@ -37,14 +37,14 @@ func BenchmarkRanges(b *testing.B) {
 
 	b.Run("for", func(b *testing.B) {
 		for b.Loop() {
-			fibonacci(N)
+			_ = fibonacci(N)
 		}
 	})
 
 	b.Run("loop", func(b *testing.B) {
 		for b.Loop() {
 			Times(5, func(i int) {
-				fibonacci(N)
+				_ = fibonacci(N)
 			})
 		}
 	})

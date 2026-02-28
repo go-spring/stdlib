@@ -45,7 +45,7 @@ func NewHelloRequest() *HelloRequest {
 func (x *HelloRequest) Bind(r *http.Request) (err error) {
 	values, parseErr := url.ParseQuery(r.URL.RawQuery)
 	if parseErr != nil {
-		err = errutil.Explain(err, "parse query error: %w", parseErr)
+		err = errutil.Explain(err, "parse query error: %s", parseErr)
 		return
 	}
 
@@ -58,7 +58,7 @@ func (x *HelloRequest) Bind(r *http.Request) (err error) {
 		if len(v) == 1 {
 			x.Message = v[0]
 		} else {
-			err = errutil.Stack(err, "invalid value for \"message\"")
+			err = errutil.Explain(err, "invalid value for \"message\"")
 		}
 	}
 	if !hasMessage {
@@ -69,7 +69,7 @@ func (x *HelloRequest) Bind(r *http.Request) (err error) {
 
 func (x *HelloRequest) Validate() (err error) {
 	if validateErr := x.HelloRequestBody.Validate(); validateErr != nil {
-		err = errutil.Stack(err, "validate failed on \"HelloRequest\": %w", validateErr)
+		err = errutil.Stack(err, "validate failed on \"HelloRequest\": %s", validateErr)
 	}
 	return
 }
@@ -82,10 +82,7 @@ func (x *HelloRequestBody) DecodeJSON(d jsonflow.Decoder) (err error) {
 		return err
 	}
 
-	for {
-		if d.PeekKind() == '}' {
-			break
-		}
+	for d.PeekKind() != '}' {
 
 		var key string
 		key, err = jsonflow.DecodeString(d)
@@ -172,9 +169,9 @@ func TestHello(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	fmt.Println(string(b))
-	svr.Shutdown(t.Context())
+	_ = svr.Shutdown(t.Context())
 }
 
 func TestStream(t *testing.T) {
@@ -195,7 +192,7 @@ func TestStream(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	fmt.Print(string(b))
-	svr.Shutdown(t.Context())
+	_ = svr.Shutdown(t.Context())
 }

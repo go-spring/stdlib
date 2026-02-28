@@ -335,10 +335,7 @@ func DecodeArray[T any](
 		case '[':
 			_, _, _ = d.ReadToken()
 			v := make([]T, 0)
-			for {
-				if d.PeekKind() == ']' {
-					break
-				}
+			for d.PeekKind() != ']' {
 				i, err := parseFn(d)
 				if err != nil {
 					return nil, err
@@ -372,10 +369,7 @@ func DecodeMap[K comparable, V any](
 		case '{':
 			_, _, _ = d.ReadToken()
 			m := make(map[K]V)
-			for {
-				if d.PeekKind() == '}' {
-					break
-				}
+			for d.PeekKind() != '}' {
 				key, err := parseKeyFn(d)
 				if err != nil {
 					return nil, err

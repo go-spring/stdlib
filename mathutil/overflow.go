@@ -33,7 +33,6 @@ func OverflowInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](v int64) bool {
 	case int32:
 		return v > math.MaxInt32 || v < math.MinInt32
 	case int64:
-		return v > math.MaxInt64 || v < math.MinInt64
 	}
 	return false
 }

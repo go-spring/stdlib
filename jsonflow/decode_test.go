@@ -862,10 +862,7 @@ func (b *TestObject) DecodeJSON(d Decoder) error {
 		foundInt bool
 	)
 
-	for {
-		if d.PeekKind() == '}' {
-			break
-		}
+	for d.PeekKind() != '}' {
 		key, err := DecodeString(d)
 		if err != nil {
 			return err

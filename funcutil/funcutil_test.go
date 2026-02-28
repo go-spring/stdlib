@@ -33,14 +33,18 @@ func TestFuncName(t *testing.T) {
 	assert.That(t, funcutil.FuncName((*receiver).ptrFnWithArgs)).Equal("funcutil_test.(*receiver).ptrFnWithArgs")
 }
 
+// nolint: unused
 func fnNoArgs() {}
 
+// nolint: unused
 func fnWithArgs(i int) {}
 
 type receiver struct{}
 
+// nolint: unused
 func (r *receiver) ptrFnNoArgs() {}
 
+// nolint: unused
 func (r *receiver) ptrFnWithArgs(i int) {}
 
 func TestFileLine(t *testing.T) {
@@ -53,25 +57,25 @@ func TestFileLine(t *testing.T) {
 		{
 			fnNoArgs,
 			"funcutil/funcutil_test.go",
-			36,
+			37,
 			"funcutil_test.fnNoArgs",
 		},
 		{
 			fnWithArgs,
 			"funcutil/funcutil_test.go",
-			38,
+			40,
 			"funcutil_test.fnWithArgs",
 		},
 		{
 			(*receiver).ptrFnNoArgs,
 			"funcutil/funcutil_test.go",
-			42,
+			45,
 			"funcutil_test.(*receiver).ptrFnNoArgs",
 		},
 		{
 			(*receiver).ptrFnWithArgs,
 			"funcutil/funcutil_test.go",
-			44,
+			48,
 			"funcutil_test.(*receiver).ptrFnWithArgs",
 		},
 	}

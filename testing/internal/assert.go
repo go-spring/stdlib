@@ -45,7 +45,7 @@ func (m *MockTestingT) Helper() {}
 func (m *MockTestingT) Error(args ...any) {
 	m.buf.WriteString("error# ")
 	for _, arg := range args {
-		m.buf.WriteString(fmt.Sprint(arg))
+		_, _ = fmt.Fprint(&m.buf, fmt.Sprint(arg))
 	}
 }
 
@@ -53,7 +53,7 @@ func (m *MockTestingT) Error(args ...any) {
 func (m *MockTestingT) Fatal(args ...any) {
 	m.buf.WriteString("fatal# ")
 	for _, arg := range args {
-		m.buf.WriteString(fmt.Sprint(arg))
+		_, _ = fmt.Fprint(&m.buf, fmt.Sprint(arg))
 	}
 }
 

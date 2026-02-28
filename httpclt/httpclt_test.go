@@ -72,10 +72,7 @@ func (r *HelloResponse) DecodeJSON(d jsonflow.Decoder) (err error) {
 		return err
 	}
 
-	for {
-		if d.PeekKind() == '}' {
-			break
-		}
+	for d.PeekKind() != '}' {
 
 		var key string
 		key, err = jsonflow.DecodeString(d)
@@ -112,6 +109,7 @@ func (c *HelloClient) Hello(ctx context.Context, req *HelloRequest, opts ...http
 		Schema:  "http",
 		Method:  "GET",
 		Pattern: "/v1/hello",
+		// nolint: staticcheck
 		RawPath: fmt.Sprintf("/v1/hello"),
 		Query:   req,
 		Header: http.Header{
