@@ -30,10 +30,9 @@ func TestStorage(t *testing.T) {
 		s := NewStorage()
 		fileID := s.AddFile("test.go")
 
-		_, err := s.CheckKey("")
-		assert.Error(t, err).Matches("key is empty")
-		exists, err := s.CheckKey("nonexistent")
-		assert.That(t, err).Nil()
+		exists := s.Exists("")
+		assert.That(t, exists).False()
+		exists = s.Exists("nonexistent")
 		assert.That(t, exists).False()
 
 		subKeys, err := s.SubKeys("")
@@ -55,8 +54,7 @@ func TestStorage(t *testing.T) {
 		fileID := s.AddFile("test.go")
 
 		assert.That(t, s.Set("config.host", "localhost", fileID)).Nil()
-		exists, err := s.CheckKey("config.host")
-		assert.That(t, err).Nil()
+		exists := s.Exists("config.host")
 		assert.That(t, exists).True()
 		assert.That(t, s.Get("config.host")).Equal("localhost")
 
@@ -87,8 +85,7 @@ func TestStorage(t *testing.T) {
 		assert.That(t, s.Set("servers[0]", "web1", fileID)).Nil()
 		assert.That(t, s.Set("servers[1]", "web2", fileID)).Nil()
 
-		exists, err := s.CheckKey("servers[0]")
-		assert.That(t, err).Nil()
+		exists := s.Exists("servers[0]")
 		assert.That(t, exists).True()
 
 		subKeys, err := s.SubKeys("servers")
@@ -114,8 +111,7 @@ func TestStorage(t *testing.T) {
 		assert.That(t, s.Set("database.connections[0].port", "5432", fileID)).Nil()
 		assert.That(t, s.Set("database.connections[1].host", "remote", fileID)).Nil()
 
-		exists, err := s.CheckKey("database.connections[0].host")
-		assert.That(t, err).Nil()
+		exists := s.Exists("database.connections[0].host")
 		assert.That(t, exists).True()
 
 		subKeys, err := s.SubKeys("database")
@@ -214,8 +210,7 @@ func TestStorage(t *testing.T) {
 
 		// Test empty array
 		assert.That(t, s.Set("empty_arr", "[]", fileID)).Nil()
-		exists, err := s.CheckKey("empty_arr")
-		assert.That(t, err).Nil()
+		exists := s.Exists("empty_arr")
 		assert.That(t, exists).True()
 
 		_, inData := s.data["empty_arr"]
@@ -225,8 +220,7 @@ func TestStorage(t *testing.T) {
 
 		// Test empty object
 		assert.That(t, s.Set("empty_obj", "{}", fileID)).Nil()
-		exists, err = s.CheckKey("empty_obj")
-		assert.That(t, err).Nil()
+		exists = s.Exists("empty_obj")
 		assert.That(t, exists).True()
 
 		_, inData = s.data["empty_obj"]
@@ -235,15 +229,14 @@ func TestStorage(t *testing.T) {
 		assert.That(t, inEmpty).True()
 
 		// Test nil value
-		assert.That(t, s.Set("nil_val", "&lt;nil&gt;", fileID)).Nil()
-		exists, err = s.CheckKey("nil_val")
-		assert.That(t, err).Nil()
+		assert.That(t, s.Set("nil_val", "<nil>", fileID)).Nil()
+		exists = s.Exists("nil_val")
 		assert.That(t, exists).True()
 
 		_, inData = s.data["nil_val"]
 		_, inEmpty = s.empty["nil_val"]
-		assert.That(t, inData).True()   // nil value stored in data
-		assert.That(t, inEmpty).False() // not in empty
+		assert.That(t, inData).False() // nil value stored in empty
+		assert.That(t, inEmpty).True() // not in data
 
 		// Test empty container extension restriction
 		assert.Error(t, s.Set("empty_arr[0]", "item", fileID)).NotNil()

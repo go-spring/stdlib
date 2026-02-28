@@ -167,6 +167,21 @@ func (s *Storage) Keys() []string {
 	return keys
 }
 
+// Data returns all flattened key/value pairs currently stored in the Storage.
+//
+// The result includes both concrete values and empty-container markers
+// (e.g. "[]", "{}", "<nil>"), and is sufficient to reconstruct the Storage
+// structure when re-inserted via Set.
+func (s *Storage) Data() map[string]string {
+	r := make(map[string]string)
+	for _, m := range listutil.SliceOf(s.data, s.empty) {
+		for k, v := range m {
+			r[k] = v.Value
+		}
+	}
+	return r
+}
+
 // AddFile registers a configuration source and assigns it a compact int8 ID.
 //
 // If the file has already been registered, the existing ID is returned.
@@ -360,50 +375,43 @@ func (s *Storage) Set(key string, val string, file int8) error {
 	return nil
 }
 
-// CheckKey determines whether a key or path exists within the Storage.
+// Exists determines whether a key or path *structurally exists* within the Storage.
 //
-// A key is considered to exist if it refers to:
-//
-//   - a concrete leaf value
-//   - an explicitly stored empty container
-//   - a valid intermediate structural node
-//
-// Structural conflicts encountered during traversal are reported as errors.
-func (s *Storage) CheckKey(key string) (exists bool, err error) {
-	if key == "" {
-		return false, errutil.Explain(nil, "key is empty")
-	}
-
-	// Not initialized yet
-	if s.root == nil {
-		return false, nil
+// This check is intentionally permissive: the key does not need to represent
+// a valid leaf path. Container nodes (including arrays) and intermediate
+// structural nodes are considered existing as long as they are compatible
+// with the current structure.
+func (s *Storage) Exists(key string) bool {
+	if key == "" || s.root == nil {
+		return false
 	}
 
 	if _, ok := s.empty[key]; ok {
-		return true, nil
+		return true
 	}
 
 	if _, ok := s.data[key]; ok {
-		return true, nil
+		return true
 	}
 
+	// Invalid paths are treated as non-existent.
 	path, err := SplitPath(key)
 	if err != nil {
-		return false, err
+		return false
 	}
 
 	n := s.root
 	for i, pathNode := range path {
 		if err = checkNode(s, n, pathNode, path, i); err != nil {
-			return false, err
+			return false
 		}
 		v, ok := n.Data[pathNode.Elem]
 		if !ok {
-			return false, nil
+			return false
 		}
 		n = v
 	}
-	return true, nil
+	return true
 }
 
 // SubKeys returns the immediate child keys of a container path.
@@ -491,6 +499,10 @@ func (s *Storage) SubTree(key string) (map[string]string, error) {
 
 // Dump writes the contents of Storage to the given writer in a
 // human-readable, deterministic format grouped by source file.
+//
+// The output is intended for inspection and debugging purposes only.
+// It is not a stable serialization format and should not be parsed
+// or relied upon for programmatic consumption.
 func (s *Storage) Dump(w io.Writer) error {
 	keys := s.Keys()
 	for _, file := range ordered.MapKeys(s.file) {
