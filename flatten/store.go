@@ -14,517 +14,414 @@
  * limitations under the License.
  */
 
-// Package flatten provides utilities for validating the *structure* of
-// hierarchical configuration data by converting it into a flat key space.
-//
-// The primary design goal of this package is *structural key validation* for
-// structured configuration formats such as JSON, YAML, or TOML. Rather than
-// operating directly on nested maps and slices via reflection, flatten converts
-// hierarchical data into a flat key/value representation while retaining enough
-// structural metadata to:
-//
-//   - Validate key paths against structural constraints
-//   - Detect property conflicts early (e.g. map vs array, value vs container)
-//   - Support deterministic traversal and querying
-//   - Track value provenance across multiple configuration sources
-//
-// Flattened keys use:
-//
-//   - Dot notation for map/object fields:     "db.host"
-//   - Index notation for arrays/slices:       "servers[0].port"
-//
-// For example:
-//
-//	{"db": {"hosts": ["a", "b"]}}
-//
-// becomes:
-//
-//	{
-//	  "db.hosts[0]": "a",
-//	  "db.hosts[1]": "b",
-//	}
-//
-// Internally, the package deliberately separates *structure* from *values*:
-//
-//   - Structure is tracked by an internal hierarchical tree that models paths
-//     as typed segments (map keys or array indices) and enforces consistency.
-//   - Leaf values are stored in flat maps keyed by normalized string paths.
-//
-// This separation allows flatten to perform strict structural validation
-// without duplicating data, while still providing a simple flat representation
-// for querying, comparison, merging, and diffing.
-//
-// Key components include:
-//
-//   - Path: a typed abstraction over hierarchical keys, supporting parsing
-//     from and formatting to string paths such as "foo.bar[0]".
-//   - Storage: a container for flattened key/value pairs that maintains the
-//     internal structure tree, prevents conflicting writes, and associates
-//     values with their source files for provenance tracking.
-//   - Query helpers: utilities for existence checks, subkey enumeration, and
-//     deterministic iteration.
-//
-// Typical use cases:
-//
-//   - Normalizing configuration files from multiple sources for comparison,
-//     merging, or diffing.
-//   - Querying deeply nested configuration data using simple string paths
-//     without dealing with reflection or nested map structures directly.
-//   - Building configuration tooling that requires strict structural guarantees
-//     and reproducible traversal order.
 package flatten
 
 import (
-	"io"
-	"maps"
-	"slices"
-	"sort"
 	"strings"
-
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/listutil"
-	"github.com/go-spring/stdlib/ordered"
 )
 
-// treeNode represents a structural node in the internal hierarchy tree.
+// Storage defines the minimal abstraction required by the bind system.
 //
-// A treeNode exists solely to model *structure*, not to store values.
-// Each node corresponds to a single path segment and is typed as either:
+// Data is stored in flattened form, for example:
 //
-//   - a map/object key
-//   - an array index
+//	server.port=8080
+//	server.host=localhost
+//	users[0].name=tom
 //
-// Invariants:
+// The implementation assumes the input data is already valid.
+// Storage itself does not validate structural correctness.
 //
-//   - treeNode never stores leaf values
-//   - leaf values are stored exclusively in Storage.data or Storage.empty
-//   - the Type of a node determines the expected type of all its children
-//   - a nil *treeNode represents a leaf position (no further structure)
+// The interface provides three capabilities used during binding:
 //
-// This design allows early detection of invalid configurations such as:
+//   - leaf value lookup
+//   - map key discovery
+//   - slice entry discovery
 //
-//   - treating the same path as both a map and an array
-//   - assigning a value where a container already exists
-type treeNode struct {
-	Type PathType
-	Data map[string]*treeNode
+// Exists is mainly intended for property condition checks rather than binding.
+type Storage interface {
+
+	// Exists reports whether a key exists.
+	//
+	// A key is considered existing if:
+	//   - it exists as an exact leaf key
+	//   - it is a prefix of other keys
+	//
+	// Example:
+	//
+	//	server.port=8080
+	//
+	//	Exists("server")      -> true
+	//	Exists("server.port") -> true
+	//	Exists("server.host") -> false
+	//
+	// This method is typically used by property condition logic.
+	Exists(key string) bool
+
+	// Value returns the value of a leaf node.
+	//
+	// Only exact key matches are returned.
+	Value(key string) (string, bool)
+
+	// MapKeys collects the direct child keys of a map node.
+	//
+	// Example:
+	//
+	//	key = "server"
+	//	data:
+	//	    server.host
+	//	    server.port
+	//
+	// result:
+	//
+	//	    {"host", "port"}
+	//
+	// Only the first map level is returned.
+	MapKeys(key string, result map[string]struct{}) bool
+
+	// SliceEntries collects all flattened entries belonging to a slice node.
+	//
+	// Example:
+	//
+	//	key = "users"
+	//	data:
+	//	    users[0].name
+	//	    users[1].name
+	//
+	// result will contain all matching entries.
+	SliceEntries(key string, result map[string]string) bool
 }
 
-// ValueInfo stores a flattened value together with its source information.
-//
-// The File field records the Storage-local numeric identifier of the
-// configuration file from which the value originated. This enables
-// provenance tracking and deterministic merging behavior across multiple inputs.
-type ValueInfo struct {
-	File  int8
-	Value string
+// Properties represents a flattened key-value storage.
+type Properties struct {
+	data map[string]string
 }
 
-// Storage is the central data structure of this package.
-//
-// It maintains three logically distinct layers:
-//
-//  1. root  – a hierarchical tree that models *only structure*
-//  2. data  – flattened leaf key/value pairs
-//  3. empty – flattened keys representing empty containers or nil values
-//
-// empty is tracked separately to preserve leaf semantics for empty
-// containers and to prevent illegal path extension.
-//
-// Additionally, Storage tracks file provenance using a compact int8 index.
-//
-// Core invariants:
-//
-//   - root contains no values, only structure
-//   - data contains only concrete leaf values
-//   - empty contains only leaf paths representing [], {}, or <nil>
-//   - a single path cannot simultaneously be a container and a value
-type Storage struct {
-	root  *treeNode
-	data  map[string]ValueInfo
-	empty map[string]ValueInfo
-	file  map[string]int8
-}
-
-// NewStorage creates a new Storage instance.
-func NewStorage() *Storage {
-	return &Storage{
-		data:  make(map[string]ValueInfo),
-		empty: make(map[string]ValueInfo),
-		file:  make(map[string]int8),
+// NewProperties creates a new Properties instance.
+func NewProperties(data map[string]string) *Properties {
+	if data == nil {
+		data = make(map[string]string)
 	}
+	return &Properties{data: data}
 }
 
-// Keys returns all flattened keys currently stored in the Storage.
-//
-// This includes both concrete values and empty-container markers.
-// The result is sorted lexicographically to ensure deterministic iteration.
-func (s *Storage) Keys() []string {
-	var keys []string
-	keys = slices.AppendSeq(keys, maps.Keys(s.data))
-	keys = slices.AppendSeq(keys, maps.Keys(s.empty))
-	sort.Strings(keys)
-	return keys
+// MapProperties creates a new Properties instance from a
+// hierarchical map by flattening it into key-value pairs.
+func MapProperties(data map[string]any) *Properties {
+	return NewProperties(Flatten(data))
 }
 
-// Data returns all flattened key/value pairs currently stored in the Storage.
+// Data returns the underlying flattened data.
+func (s *Properties) Data() map[string]string {
+	return s.data
+}
+
+// Get retrieves the value of a leaf node.
+func (s *Properties) Get(key string) (string, bool) {
+	v, ok := s.data[key]
+	return v, ok
+}
+
+// Set sets the value of a leaf node.
+func (s *Properties) Set(key, val string) {
+	s.data[key] = val
+}
+
+// PropertiesStorage adapts Properties to the Storage interface.
+type PropertiesStorage struct {
+	*Properties
+}
+
+// NewPropertiesStorage creates a new PropertiesStorage instance.
+func NewPropertiesStorage(s *Properties) *PropertiesStorage {
+	return &PropertiesStorage{Properties: s}
+}
+
+// Exists reports whether the key exists.
 //
-// The result includes both concrete values and empty-container markers
-// (e.g. "[]", "{}", "<nil>"), and is sufficient to reconstruct the Storage
-// structure when re-inserted via Set.
-func (s *Storage) Data() map[string]string {
-	r := make(map[string]string)
-	for _, m := range listutil.SliceOf(s.data, s.empty) {
-		for k, v := range m {
-			r[k] = v.Value
+// A key is considered existing if:
+//   - it exists as an exact leaf key
+//   - it is a prefix of other keys (intermediate node)
+func (s *PropertiesStorage) Exists(key string) bool {
+	if _, ok := s.data[key]; ok {
+		return true
+	}
+	for k := range s.data {
+		str, ok := strings.CutPrefix(k, key)
+		if !ok || str == "" {
+			continue
+		}
+		if str[0] == '.' || str[0] == '[' {
+			return true
 		}
 	}
-	return r
+	return false
 }
 
-// AddFile registers a configuration source and assigns it a compact int8 ID.
-//
-// If the file has already been registered, the existing ID is returned.
-//
-// The total number of files is limited to 127, which is considered sufficient
-// for typical configuration-merging scenarios.
-func (s *Storage) AddFile(file string) int8 {
-	if i, ok := s.file[file]; ok {
-		return i
-	}
-	i := int8(len(s.file))
-	s.file[file] = i
-	return i
+// Value retrieves the value of a leaf node.
+func (s *PropertiesStorage) Value(key string) (string, bool) {
+	val, ok := s.data[key]
+	return val, ok
 }
 
-// MergeMap flattens a nested map and inserts all resulting key/value pairs
-// into the Storage under the given file identity.
-//
-// Structural conflicts are detected eagerly during insertion.
-func (s *Storage) MergeMap(data map[string]any, file string) error {
-	fileID := s.AddFile(file)
-	for key, val := range Flatten(data) {
-		if err := s.Set(key, val, fileID); err != nil {
-			return err
+// MapKeys collects child keys of a map node.
+func (s *PropertiesStorage) MapKeys(key string, result map[string]struct{}) bool {
+	var found bool
+	for k := range s.data {
+		str, ok := strings.CutPrefix(k, key)
+		if !ok || str == "" || str[0] != '.' {
+			continue
+		}
+		if str = str[1:]; str == "" {
+			continue
+		}
+		if i := strings.Index(str, "."); i > 0 {
+			result[str[:i]] = struct{}{}
+			found = true
+		} else if i < 0 {
+			result[str] = struct{}{}
+			found = true
 		}
 	}
-	return nil
+	return found
 }
 
-// Merge imports all values from another Storage instance.
+// SliceEntries collects all entries belonging to a slice node.
 //
-// File identities from the source Storage are remapped to local IDs while
-// preserving provenance semantics.
+// The implementation only checks for the presence of key[index].
+// It does not enforce index continuity.
+func (s *PropertiesStorage) SliceEntries(key string, result map[string]string) bool {
+	var found bool
+	for k, v := range s.data {
+		str, ok := strings.CutPrefix(k, key)
+		if !ok || str == "" || str[0] != '[' {
+			continue
+		}
+		result[k] = v
+		found = true
+	}
+	return found
+}
+
+// PrefixedStorage wraps another Storage and automatically
+// prepends a fixed prefix to all keys.
+type PrefixedStorage struct {
+	Storage
+	Prefix string
+}
+
+// NewPrefixedStorage creates a new PrefixedStorage instance.
+func NewPrefixedStorage(s Storage, prefix string) *PrefixedStorage {
+	return &PrefixedStorage{
+		Storage: s,
+		Prefix:  prefix,
+	}
+}
+
+// Exists checks existence with the configured prefix.
+func (s *PrefixedStorage) Exists(key string) bool {
+	return s.Storage.Exists(s.Prefix + key)
+}
+
+// Value retrieves a value with the configured prefix.
+func (s *PrefixedStorage) Value(key string) (string, bool) {
+	return s.Storage.Value(s.Prefix + key)
+}
+
+// MapKeys retrieves map keys with the configured prefix.
+func (s *PrefixedStorage) MapKeys(key string, result map[string]struct{}) bool {
+	return s.Storage.MapKeys(s.Prefix+key, result)
+}
+
+// SliceEntries retrieves slice entries with the configured prefix.
+func (s *PrefixedStorage) SliceEntries(key string, result map[string]string) bool {
+	return s.Storage.SliceEntries(s.Prefix+key, result)
+}
+
+const (
+	// StorageCommandLine represents configuration provided via command line.
+	// This usually has the highest priority.
+	StorageCommandLine = iota
+
+	// StorageEnvironment represents configuration from environment variables.
+	StorageEnvironment
+
+	// StorageProfileFile represents configuration loaded from profile-specific files.
+	// Example: application-dev.properties.
+	StorageProfileFile
+
+	// StorageAppFile represents configuration from the main application file.
+	// Example: application.properties or application.yml.
+	StorageAppFile
+
+	// StorageDefault represents built-in default configuration values.
+	// This layer typically has the lowest priority.
+	StorageDefault
+
+	// StorageMax is the number of supported layers.
+	StorageMax
+)
+
+type ConfigSource struct {
+	*PropertiesStorage
+	Name string
+}
+
+// LayeredStorage aggregates multiple configuration sources with
+// deterministic precedence rules.
 //
-// Note: When merging Storages with identical filenames, the provenance
-// information may become ambiguous as files with the same name from
-// different sources will share the same file ID in the merged result.
-func (s *Storage) Merge(p *Storage) error {
+// The design follows the layered configuration model used by
+// Spring-style environments: configuration values may come from
+// multiple sources (command line, environment variables, files, etc.),
+// and a predictable priority order determines which value wins.
+//
+// Precedence rules:
+//
+//  1. Layers with a lower index have higher priority.
+//  2. Within the same layer, sources added later override earlier ones.
+//
+// For example:
+//
+//	CommandLine
+//	Environment
+//	ProfileFile
+//	AppFile
+//	Default
+//
+// Lookup always scans layers from highest priority to lowest.
+//
+// Different data structures behave differently across layers:
+//
+//   - Leaf values follow **override semantics**.
+//     The first value found wins.
+//
+//   - Map properties follow **merge semantics**.
+//     Keys from all layers are combined.
+//
+//   - Slice properties follow **override semantics**.
+//     The first layer defining the slice replaces all lower layers.
+type LayeredStorage struct {
+	// layers groups configuration sources by priority level.
+	//
+	// Each index represents a logical configuration layer.
+	// The slice allows multiple sources inside the same layer.
+	layers [StorageMax][]ConfigSource
+}
 
-	// source_filename -> target_file_id
-	newFileIDMap := make(map[string]int8)
-	for file := range p.file {
-		newFileIDMap[file] = s.AddFile(file)
-	}
+// AddStorage registers a configuration source into the specified layer.
+//
+// Sources within the same layer follow an override rule:
+// the most recently added source has higher priority.
+//
+// This is implemented by inserting the new source at the
+// beginning of the slice so that iteration always sees
+// newer sources first.
+func (s *LayeredStorage) AddStorage(index int, source *PropertiesStorage, name string) {
+	s.layers[index] = append([]ConfigSource{{
+		PropertiesStorage: source,
+		Name:              name,
+	}}, s.layers[index]...)
+}
 
-	// source_file_id -> source_filename
-	oldFileIDMap := make(map[int8]string)
-	for file, fileID := range p.file {
-		oldFileIDMap[fileID] = file
-	}
-
-	for _, m := range listutil.SliceOf(p.data, p.empty) {
-		for key, r := range m {
-			// source_file_id -> source_filename -> target_file_id
-			fileID := newFileIDMap[oldFileIDMap[r.File]]
-			if err := s.Set(key, r.Value, fileID); err != nil {
-				return err
+// Exists reports whether the given key exists in any layer.
+//
+// Lookup follows layer priority: once a higher-priority source
+// reports the key exists, lower layers are not checked.
+//
+// Exists considers both leaf nodes and intermediate prefixes,
+// depending on the underlying Storage implementation.
+func (s *LayeredStorage) Exists(key string) bool {
+	for _, arr := range s.layers {
+		for _, source := range arr {
+			if source.Exists(key) {
+				return true
 			}
 		}
 	}
-	return nil
+	return false
 }
 
-// Lookup retrieves the value associated with a flattened key.
+// Value retrieves the leaf value for a key.
 //
-// The key must refer to a concrete leaf value.
-// Intermediate nodes and empty-container markers are intentionally excluded.
-func (s *Storage) Lookup(key string) (string, bool) {
-	if v, ok := s.data[key]; ok {
-		return v.Value, true
+// The lookup follows override semantics across layers:
+// the first matching value found in the highest-priority
+// source is returned.
+func (s *LayeredStorage) Value(key string) (string, bool) {
+	for _, arr := range s.layers {
+		for _, source := range arr {
+			if v, ok := source.Value(key); ok {
+				return v, true
+			}
+		}
 	}
 	return "", false
 }
 
-// Get retrieves the value associated with a flattened key, or returns a default.
+// MapKeys collects the child keys of a map node across all layers.
 //
-// Only concrete leaf values are considered valid lookup targets.
-// If the key does not exist, the first provided default value (if any) is returned.
-func (s *Storage) Get(key string, def ...string) string {
-	if v, ok := s.data[key]; ok {
-		return v.Value
-	}
-	if len(def) == 0 {
-		return ""
-	}
-	return def[0]
-}
-
-// checkNode validates that the current path segment is compatible with
-// the existing structural tree, and reports any structural conflicts.
-func checkNode(s *Storage, n *treeNode, pathNode Path, path []Path, i int) error {
-	if n == nil {
-		tempPath := JoinPath(path[:i+1])
-
-		// The path previously terminated at an empty container (e.g. a.b = []),
-		// and the caller is now attempting to extend it (e.g. a.b.c = 3).
-		if _, ok := s.empty[tempPath]; ok {
-			return errutil.Explain(nil, "cannot extend path %s: empty container is a leaf", tempPath)
-		}
-
-		// The path previously terminated at a concrete value (e.g. a.b = 1),
-		// and the caller is now attempting to create a child node (e.g. a.b.c = 2).
-		if _, ok := s.data[tempPath]; ok {
-			return errutil.Explain(nil, "cannot extend path %s: value is a leaf", tempPath)
-		}
-
-		// This branch should be unreachable under normal invariants.
-		// It is kept as a defensive fallback in case of internal inconsistency.
-		return errutil.Explain(nil, "path %s conflicts with existing structure", tempPath)
-	}
-	if pathNode.Type != n.Type {
-		// The expected path segment type (map key vs array index) does not
-		// match the existing structural node type, indicating a type conflict
-		// such as treating the same path as both a map and an array.
-		return errutil.Explain(nil, "type conflict at path %s: expect %s but found %s",
-			JoinPath(path[:i+1]), pathNode.Type, n.Type)
-	}
-	return nil
-}
-
-// Set inserts or updates a flattened key/value pair while enforcing
-// structural consistency.
+// Unlike leaf values, map structures are merged across sources.
+// This means keys defined in different layers are combined
+// into a single logical map.
 //
-// During insertion, the key path is validated against the internal tree to
-// ensure that:
+// Example:
 //
-//   - a value is not written where a container already exists
-//   - a map branch is not reinterpreted as an array branch (or vice versa)
-//   - no partial prefix of the key conflicts with existing structure
+//	source1:
+//	    server.port=8080
 //
-// Any structural violation results in an immediate error.
-func (s *Storage) Set(key string, val string, file int8) error {
-	if key == "" {
-		return errutil.Explain(nil, "key is empty")
-	}
-
-	path, err := SplitPath(key)
-	if err != nil {
-		return err
-	}
-
-	// Initialize the root node on first insertion.
-	// The root type is fixed and must remain consistent thereafter.
-	if s.root == nil {
-		s.root = &treeNode{
-			Type: path[0].Type,
-			Data: make(map[string]*treeNode),
-		}
-	}
-
-	n := s.root
-	for i, pathNode := range path {
-		if err = checkNode(s, n, pathNode, path, i); err != nil {
-			return err
-		}
-		v, ok := n.Data[pathNode.Elem]
-		if !ok {
-			if i < len(path)-1 {
-				v = &treeNode{
-					Type: path[i+1].Type,
-					Data: make(map[string]*treeNode),
-				}
-			}
-			n.Data[pathNode.Elem] = v
-		}
-		n = v
-	}
-
-	if n != nil {
-		// A structural node already exists at this path, which means the key
-		// refers to a container (map or array). Overwriting a container with
-		// a leaf value is not allowed.
-		return errutil.Explain(nil, "cannot overwrite path %s", key)
-	}
-
-	// Store the value or empty container
-	switch val {
-	case "[]", "{}", "<nil>":
-		if _, ok := s.data[key]; ok {
-			return errutil.Explain(nil, "cannot overwrite path %s", key)
-		}
-		// Value overwrites are allowed to support configuration merging.
-		s.empty[key] = ValueInfo{file, val}
-	default:
-		if _, ok := s.empty[key]; ok {
-			return errutil.Explain(nil, "cannot overwrite path %s", key)
-		}
-		// Value overwrites are allowed to support configuration merging.
-		s.data[key] = ValueInfo{file, val}
-	}
-	return nil
-}
-
-// Exists determines whether a key or path *structurally exists* within the Storage.
+//	source2:
+//	    server.host=localhost
 //
-// This check is intentionally permissive: the key does not need to represent
-// a valid leaf path. Container nodes (including arrays) and intermediate
-// structural nodes are considered existing as long as they are compatible
-// with the current structure.
-func (s *Storage) Exists(key string) bool {
-	if key == "" || s.root == nil {
-		return false
-	}
-
-	if _, ok := s.empty[key]; ok {
-		return true
-	}
-
-	if _, ok := s.data[key]; ok {
-		return true
-	}
-
-	// Invalid paths are treated as non-existent.
-	path, err := SplitPath(key)
-	if err != nil {
-		return false
-	}
-
-	n := s.root
-	for i, pathNode := range path {
-		if err = checkNode(s, n, pathNode, path, i); err != nil {
-			return false
-		}
-		v, ok := n.Data[pathNode.Elem]
-		if !ok {
-			return false
-		}
-		n = v
-	}
-	return true
-}
-
-// SubKeys returns the immediate child keys of a container path.
+// Final map:
 //
-// The path may refer to either a map or an array; child keys are returned
-// uniformly as strings (map keys or numeric indices).
+//	server.port
+//	server.host
 //
-// Behavior:
-//
-//   - If the path refers to a leaf value, an error is returned
-//   - If the path does not exist, nil is returned
-//   - If the path refers to an empty container, an empty slice is returned
-//
-// An empty key indicates traversal starting from the root node.
-func (s *Storage) SubKeys(key string) (_ []string, err error) {
-	var path []Path
-	if key != "" {
-		if path, err = SplitPath(key); err != nil {
-			return nil, err
-		}
-	}
-
-	// Not initialized yet
-	if s.root == nil {
-		return nil, nil
-	}
-
-	if _, ok := s.empty[key]; ok {
-		return nil, nil
-	}
-
-	if _, ok := s.data[key]; ok {
-		// Leaf values do not have child keys. Attempting to enumerate
-		// subkeys on a leaf indicates a misuse of the API.
-		return nil, errutil.Explain(nil, "cannot list subkeys of leaf value at path %s", key)
-	}
-
-	n := s.root
-	for i, pathNode := range path {
-		if err = checkNode(s, n, pathNode, path, i); err != nil {
-			return nil, err
-		}
-		v, ok := n.Data[pathNode.Elem]
-		if !ok {
-			return nil, nil
-		}
-		n = v
-	}
-	return ordered.MapKeys(n.Data), nil
-}
-
-// SubTree extracts all descendant key/value pairs under the given key.
-//
-// Returned keys have the prefix removed. The result may include empty
-// container markers ([] / {} / <nil>), allowing reconstruction of a
-// Storage instance if desired.
-//
-// The key must not be empty.
-func (s *Storage) SubTree(key string) (map[string]string, error) {
-	if key == "" {
-		return nil, errutil.Explain(nil, "key is empty")
-	}
-
-	// Validate the key. In particular, leaf values cannot have subtrees,
-	// and any structural conflict should be reported as an error.
-	if _, err := s.SubKeys(key); err != nil {
-		return nil, err
-	}
-
-	r := make(map[string]string)
-	for _, m := range listutil.SliceOf(s.data, s.empty) {
-		for k, v := range m {
-			str, ok := strings.CutPrefix(k, key)
-			if !ok || str == "" {
-				continue
-			}
-			if c := str[0]; c != '.' && c != '[' {
-				continue
-			}
-			r[str[1:]] = v.Value
-		}
-	}
-	return r, nil
-}
-
-// Dump writes the contents of Storage to the given writer in a
-// human-readable, deterministic format grouped by source file.
-//
-// The output is intended for inspection and debugging purposes only.
-// It is not a stable serialization format and should not be parsed
-// or relied upon for programmatic consumption.
-func (s *Storage) Dump(w io.Writer) error {
-	keys := s.Keys()
-	for _, file := range ordered.MapKeys(s.file) {
-		if err := listutil.WriteStrings(w, file, ":\n"); err != nil {
-			return errutil.Explain(err, "failed to dump")
-		}
-		fileID := s.file[file]
-		for _, key := range keys {
-			r, ok := s.data[key]
-			if !ok {
-				r, ok = s.empty[key]
-				if !ok {
-					continue
-				}
-			}
-			if r.File != fileID {
-				continue
-			}
-			if err := listutil.WriteStrings(w, "  ", key, "=", r.Value, "\n"); err != nil {
-				return errutil.Explain(err, "failed to dump")
+// If the same key appears in multiple layers, the actual
+// value resolution still follows the normal override rule
+// in Value().
+func (s *LayeredStorage) MapKeys(key string, result map[string]struct{}) bool {
+	var found bool
+	for _, arr := range s.layers {
+		for _, source := range arr {
+			if source.MapKeys(key, result) {
+				found = true
 			}
 		}
 	}
-	return nil
+	return found
+}
+
+// SliceEntries collects slice entries for the specified key.
+//
+// Lists follow an override rule across configuration layers.
+// Once a higher-priority source defines a slice, lower layers
+// are ignored entirely.
+//
+// Example:
+//
+//	source1:
+//	    my.list[0]=a
+//	    my.list[1]=b
+//
+//	source2:
+//	    my.list[0]=c
+//
+// Result:
+//
+//	[c]
+//
+// Not:
+//
+//	[c,b]
+//
+// Therefore the search stops as soon as a source containing
+// slice entries is found.
+func (s *LayeredStorage) SliceEntries(key string, result map[string]string) bool {
+	for _, arr := range s.layers {
+		for _, source := range arr {
+			if source.SliceEntries(key, result) {
+				return true
+			}
+		}
+	}
+	return false
 }
