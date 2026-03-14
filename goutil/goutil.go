@@ -50,7 +50,22 @@ var OnPanic = func(ctx context.Context, info PanicInfo) {
 	fmt.Printf("[PANIC] %v\n%s\n", info.Panic, info.Stack)
 }
 
-// Status represents the lifecycle of a goroutine launched by Go.
+// CancelMode controls how the context passed to a goroutine handles
+// cancellation relative to its parent context.
+type CancelMode int
+
+const (
+	// InheritCancel means the goroutine receives the original context
+	// and therefore inherits its cancellation and deadline.
+	InheritCancel CancelMode = iota
+
+	// DetachCancel means the goroutine receives a context created with
+	// context.WithoutCancel, so cancellation of the parent context does
+	// not propagate to the goroutine.
+	DetachCancel
+)
+
+// Status represents the lifecycle of a goroutine launched by the Go function.
 // It provides a synchronization point to wait for the goroutine to finish.
 type Status struct {
 	ch chan struct{}
@@ -80,10 +95,11 @@ func (s *Status) Wait() {
 // is cooperative: the goroutine will NOT stop automatically when ctx is
 // canceled. The function f must observe ctx.Done() and return explicitly.
 //
-// If withoutCancel is true, f receives a context that is detached from
-// cancellation of the parent context.
-func Go(ctx context.Context, f func(ctx context.Context), withoutCancel bool) *Status {
-	if withoutCancel {
+// If mode is DetachCancel, f receives a context derived using
+// context.WithoutCancel. In that case, cancellation and deadlines of the
+// parent context will not propagate to the goroutine.
+func Go(ctx context.Context, f func(ctx context.Context), mode CancelMode) *Status {
+	if mode == DetachCancel {
 		ctx = context.WithoutCancel(ctx)
 	}
 	s := newStatus()
@@ -141,10 +157,11 @@ type GoValueFunc[T any] func(ctx context.Context) (T, error)
 // As with Go, context cancellation is cooperative: f must observe ctx.Done()
 // if early termination is required.
 //
-// If withoutCancel is true, f receives a context that is detached from
-// cancellation of the parent context.
-func GoValue[T any](ctx context.Context, f GoValueFunc[T], withoutCancel bool) *ValueStatus[T] {
-	if withoutCancel {
+// If mode is DetachCancel, f receives a context derived using
+// context.WithoutCancel. In that case, cancellation and deadlines of the
+// parent context will not propagate to the goroutine.
+func GoValue[T any](ctx context.Context, f GoValueFunc[T], mode CancelMode) *ValueStatus[T] {
+	if mode == DetachCancel {
 		ctx = context.WithoutCancel(ctx)
 	}
 	s := newValueStatus[T]()

@@ -31,7 +31,7 @@ func TestGo(t *testing.T) {
 		var s string
 		goutil.Go(t.Context(), func(ctx context.Context) {
 			panic("something is wrong")
-		}, false).Wait()
+		}, goutil.InheritCancel).Wait()
 		assert.That(t, s).Equal("")
 	})
 
@@ -39,7 +39,7 @@ func TestGo(t *testing.T) {
 		var s string
 		goutil.Go(t.Context(), func(ctx context.Context) {
 			s = "hello world!"
-		}, false).Wait()
+		}, goutil.InheritCancel).Wait()
 		assert.That(t, s).Equal("hello world!")
 	})
 
@@ -55,7 +55,7 @@ func TestGo(t *testing.T) {
 			default:
 				resultCh <- "context was not cancelled"
 			}
-		}, false) // withoutCancel=false
+		}, goutil.InheritCancel)
 
 		time.Sleep(5 * time.Millisecond)
 		cancel()
@@ -78,7 +78,7 @@ func TestGo(t *testing.T) {
 			case <-ctx.Done():
 				resultCh <- "context was cancelled (unexpected with withoutCancel=true)"
 			}
-		}, true).Wait() // withoutCancel=true
+		}, goutil.DetachCancel).Wait()
 
 		result := <-resultCh
 		assert.That(t, result).Equal("context was not cancelled (as expected with withoutCancel=true)")
@@ -89,7 +89,7 @@ func TestGoValue(t *testing.T) {
 	t.Run("panic recovery", func(t *testing.T) {
 		s, err := goutil.GoValue(t.Context(), func(ctx context.Context) (string, error) {
 			panic("something is wrong")
-		}, false).Wait()
+		}, goutil.InheritCancel).Wait()
 		assert.That(t, s).Equal("")
 		assert.Error(t, err).Matches("panic recovered: .*")
 	})
@@ -97,7 +97,7 @@ func TestGoValue(t *testing.T) {
 	t.Run("successful execution with int", func(t *testing.T) {
 		i, err := goutil.GoValue(t.Context(), func(ctx context.Context) (int, error) {
 			return 42, nil
-		}, false).Wait()
+		}, goutil.InheritCancel).Wait()
 		assert.That(t, err).Nil()
 		assert.That(t, i).Equal(42)
 	})
@@ -105,7 +105,7 @@ func TestGoValue(t *testing.T) {
 	t.Run("successful execution with string", func(t *testing.T) {
 		s, err := goutil.GoValue(t.Context(), func(ctx context.Context) (string, error) {
 			return "hello world!", nil
-		}, false).Wait()
+		}, goutil.InheritCancel).Wait()
 		assert.That(t, err).Nil()
 		assert.That(t, s).Equal("hello world!")
 	})
@@ -115,7 +115,7 @@ func TestGoValue(t *testing.T) {
 		for i := range 3 {
 			arr = append(arr, goutil.GoValue(t.Context(), func(ctx context.Context) (int, error) {
 				return i, nil
-			}, false))
+			}, goutil.InheritCancel))
 		}
 		for i, g := range arr {
 			v, err := g.Wait()
@@ -128,7 +128,7 @@ func TestGoValue(t *testing.T) {
 		expectedErr := errors.New("expected error")
 		_, err := goutil.GoValue(t.Context(), func(ctx context.Context) (string, error) {
 			return "", expectedErr
-		}, false).Wait()
+		}, goutil.InheritCancel).Wait()
 		assert.That(t, err).Equal(expectedErr)
 	})
 
@@ -143,7 +143,7 @@ func TestGoValue(t *testing.T) {
 			default:
 				return "context was not cancelled", nil
 			}
-		}, false) // withoutCancel=false
+		}, goutil.InheritCancel)
 
 		time.Sleep(5 * time.Millisecond)
 		cancel()
@@ -164,7 +164,7 @@ func TestGoValue(t *testing.T) {
 			case <-ctx.Done():
 				return "context was cancelled (unexpected with withoutCancel=true)", nil
 			}
-		}, true).Wait() // withoutCancel=true
+		}, goutil.DetachCancel).Wait()
 
 		assert.That(t, err).Nil()
 		assert.That(t, result).Equal("context was not cancelled (as expected with withoutCancel=true)")
@@ -187,7 +187,7 @@ func TestGoValue(t *testing.T) {
 				return "value: " + retrievedValueStr, nil
 			}
 			return "value not string", nil
-		}, true).Wait() // withoutCancel=true
+		}, goutil.DetachCancel).Wait()
 
 		assert.That(t, err).Nil()
 		assert.That(t, result).Equal("value: test_value")
