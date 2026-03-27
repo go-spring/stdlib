@@ -23,7 +23,6 @@ import (
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/jsonflow"
 	"github.com/go-spring/stdlib/mathutil"
-	"github.com/go-spring/stdlib/ptrutil"
 )
 
 // DecodeBool decodes a boolean value from form values.
@@ -40,7 +39,7 @@ func DecodeBoolPtr(key string, values []string) (*bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ptrutil.New(b), nil
+	return new(b), nil
 }
 
 // DecodeInt decodes a signed integer value from form values.
@@ -64,7 +63,7 @@ func DecodeIntPtr[T ~int64 | ~int32 | ~int16 | ~int8 | ~int](key string, values 
 	if err != nil {
 		return nil, err
 	}
-	return ptrutil.New(i), nil
+	return new(i), nil
 }
 
 // DecodeUint decodes an unsigned integer value from form values.
@@ -88,7 +87,7 @@ func DecodeUintPtr[T ~uint64 | ~uint32 | ~uint16 | ~uint8 | ~uint](key string, v
 	if err != nil {
 		return nil, err
 	}
-	return ptrutil.New(u), nil
+	return new(u), nil
 }
 
 // DecodeFloat decodes a floating-point value from form values.
@@ -112,7 +111,7 @@ func DecodeFloatPtr[T ~float64 | ~float32](key string, values []string) (*T, err
 	if err != nil {
 		return nil, err
 	}
-	return ptrutil.New(f), nil
+	return new(f), nil
 }
 
 // DecodeString decodes a string value from form values.
@@ -128,7 +127,7 @@ func DecodeStringPtr(key string, values []string) (*string, error) {
 	if len(values) > 1 {
 		return nil, errutil.Explain(nil, "too many values for form field %s", key)
 	}
-	return ptrutil.New(values[0]), nil
+	return new(values[0]), nil
 }
 
 // DecodeBytes decodes a base64-encoded string into a byte slice.

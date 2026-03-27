@@ -28,10 +28,6 @@ import (
 	"github.com/go-spring/stdlib/testing/assert"
 )
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func TestDecodeBool(t *testing.T) {
 	t.Run("Decode true", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader("true"))
@@ -1041,7 +1037,7 @@ func TestDecodeObject(t *testing.T) {
 		assert.That(t, o.Object).NotNil()
 		assert.That(t, o.Object.Int).Equal(5)
 		assert.That(t, o.StrList).Equal([]string{"str1", "str2", "str3"})
-		assert.That(t, o.StrPtrList).Equal([]*string{ptr("ptr1"), ptr("ptr2")})
+		assert.That(t, o.StrPtrList).Equal([]*string{new("ptr1"), new("ptr2")})
 		assert.That(t, len(o.ObjectList)).Equal(2)
 		assert.That(t, o.ObjectList[0].Int).Equal(7)
 		assert.That(t, o.ObjectList[1].Int).Equal(8)
@@ -1049,7 +1045,7 @@ func TestDecodeObject(t *testing.T) {
 		assert.That(t, o.IntIntList).Equal([][]int{{1, 2}, {3, 4, 5}, {6}})
 		assert.That(t, o.StrIntMapList).Equal([]map[string]int64{{"key1": 10, "key2": 20}, {"key3": 30}})
 		assert.That(t, o.IntIntMap).Equal(map[int64]int{1: 10, 2: 20})
-		assert.That(t, o.StrStrPtrMap).Equal(map[string]*string{"map_key1": ptr("map_value1"), "map_key2": ptr("map_value2")})
+		assert.That(t, o.StrStrPtrMap).Equal(map[string]*string{"map_key1": new("map_value1"), "map_key2": new("map_value2")})
 		assert.That(t, len(o.StrObjectMap)).Equal(2)
 		assert.That(t, o.StrObjectMap["obj_key1"]).NotNil()
 		assert.That(t, o.StrObjectMap["obj_key1"].Int).Equal(9)

@@ -30,7 +30,6 @@ import (
 	"github.com/go-spring/stdlib/hashutil"
 	"github.com/go-spring/stdlib/httpclt"
 	"github.com/go-spring/stdlib/jsonflow"
-	"github.com/go-spring/stdlib/ptrutil"
 	"github.com/go-spring/stdlib/testing/assert"
 )
 
@@ -143,7 +142,7 @@ func TestHello(t *testing.T) {
 	}, httpclt.WithHeader(h))
 
 	assert.Error(t, err).Nil()
-	assert.That(t, resp).Equal(&HelloResponse{Message: ptrutil.New("hello world")})
+	assert.That(t, resp).Equal(&HelloResponse{Message: new("hello world")})
 	fmt.Println(resp.Message)
 
 	_ = server.Shutdown(context.Background())

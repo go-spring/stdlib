@@ -29,7 +29,6 @@ import (
 	"github.com/go-spring/stdlib/hashutil"
 	"github.com/go-spring/stdlib/httpsvr"
 	"github.com/go-spring/stdlib/jsonflow"
-	"github.com/go-spring/stdlib/ptrutil"
 )
 
 type HelloRequest struct {
@@ -120,7 +119,7 @@ type HelloServer interface {
 type HelloServerImpl struct{}
 
 func (s *HelloServerImpl) Hello(ctx context.Context, req *HelloRequest) *HelloResponse {
-	return &HelloResponse{Message: ptrutil.New("")}
+	return &HelloResponse{Message: new("")}
 }
 
 func (s *HelloServerImpl) Stream(ctx context.Context, req *HelloRequest, resp chan<- *httpsvr.Event[string]) {

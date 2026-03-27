@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/go-spring/stdlib/formutil"
-	"github.com/go-spring/stdlib/ptrutil"
 	"github.com/go-spring/stdlib/testing/assert"
 )
 
@@ -97,26 +96,26 @@ func (x *Request) EncodeForm() (string, error) {
 
 var ExpectedReq = Request{
 	Bool:            true,
-	BoolPtr:         ptrutil.New(true),
+	BoolPtr:         new(true),
 	Int:             1,
-	IntPtr:          ptrutil.New(int(1)),
+	IntPtr:          new(int(1)),
 	Int64:           1,
-	Int64Ptr:        ptrutil.New(int64(1)),
+	Int64Ptr:        new(int64(1)),
 	Uint:            1,
-	UintPtr:         ptrutil.New(uint(1)),
+	UintPtr:         new(uint(1)),
 	Uint64:          1,
-	Uint64Ptr:       ptrutil.New(uint64(1)),
+	Uint64Ptr:       new(uint64(1)),
 	Float32:         1,
-	Float32Ptr:      ptrutil.New(float32(1)),
+	Float32Ptr:      new(float32(1)),
 	String:          "1",
-	StringPtr:       ptrutil.New("1"),
+	StringPtr:       new("1"),
 	Bytes:           []byte("1"),
 	Item:            &Item{Name: "1"},
 	StringList:      []string{"1"},
-	StringPtrList:   []*string{ptrutil.New("1")},
+	StringPtrList:   []*string{new("1")},
 	ItemList:        []*Item{{Name: "1"}},
 	StringIntMap:    map[string]int{"1": 1},
-	StringIntPtrMap: map[string]*int{"1": ptrutil.New(1)},
+	StringIntPtrMap: map[string]*int{"1": new(1)},
 	StringItemMap:   map[string]*Item{"1": &Item{Name: "1"}},
 }
 

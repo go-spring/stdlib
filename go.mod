@@ -1,3 +1,3 @@
 module github.com/go-spring/stdlib
 
-go 1.25
+go 1.26
