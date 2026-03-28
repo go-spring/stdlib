@@ -39,7 +39,7 @@ func TestSomething(t *testing.T) {
 
 	// 类型专用断言
 	assert.String(t, "user@example.com").IsEmail()
-	assert.Number(t, 100).InRange(0, 200)
+	assert.Number(t, 100).Between(0, 200)
 	assert.Slice(t, []int{1, 2, 3}).Contains(2)
 }
 ```

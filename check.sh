@@ -63,9 +63,9 @@ if ! command_exists modernize; then
     install_modernize
 fi
 
-# Find fmt.Errorf and errors.New function calls, excluding vendor directory
-find . -type f -name '*.go' ! -path './vendor/*' -exec grep -Hn 'fmt\.Errorf' {} \;
-find . -type f -name '*.go' ! -path './vendor/*' -exec grep -Hn 'errors\.New' {} \;
+# Find fmt.Errorf and errors.New function calls, excluding vendor & errutil directory
+find . -type f -name '*.go' ! -path './vendor/*' ! -path './errutil/*' -exec grep -Hn 'fmt\.Errorf' {} \;
+find . -type f -name '*.go' ! -path './vendor/*' ! -path './errutil/*' -exec grep -Hn 'errors\.New' {} \;
 
 print_separator
 echo "Step 1/3: Running go fix..."

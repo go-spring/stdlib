@@ -35,97 +35,97 @@ func TestPath(t *testing.T) {
 		{
 			name: "empty key",
 			key:  "",
-			err:  "invalid key: empty string",
+			err:  "SplitPath: invalid key: empty string",
 		},
 		{
 			name: "space key",
 			key:  " ",
-			err:  "contains space at pos 0",
+			err:  "SplitPath: invalid key \" \" at pos 0: contains space",
 		},
 		{
 			name: "single dot",
 			key:  ".",
-			err:  "empty key segment",
+			err:  "SplitPath: invalid key \".\" at pos 0: empty key segment",
 		},
 		{
 			name: "double dot",
 			key:  "..",
-			err:  "empty key segment",
+			err:  "SplitPath: invalid key \"..\" at pos 0: empty key segment",
 		},
 		{
 			name: "unmatched opening bracket",
 			key:  "[",
-			err:  "invalid key \"\\[\" at pos 0: unclosed '\\['",
+			err:  "SplitPath: invalid key \"[\" at pos 0: unclosed '['",
 		},
 		{
 			name: "unmatched closing bracket",
 			key:  "]",
-			err:  "invalid key \"\\]\" at pos 0: '\\]' without matching '\\['",
+			err:  "SplitPath: invalid key \"]\" at pos 0: ']' without matching '['",
 		},
 		{
 			name: "empty brackets",
 			key:  "[]",
-			err:  "invalid key \"\\[\\]\" at pos 1: empty index",
+			err:  "SplitPath: invalid key \"[]\" at pos 1: empty index",
 		},
 		{
 			name: "invalid index",
 			key:  "[a]",
-			err:  "invalid key \"\\[a\\]\" at pos 1: index must be an unsigned integer \\(got \"a\"\\)",
+			err:  "SplitPath: invalid key \"[a]\" at pos 1: index must be an unsigned integer (got \"a\")",
 		},
 		{
 			name: "dot after key",
 			key:  "a.",
-			err:  "invalid key \"a.\" at pos 1: ends with '.'",
+			err:  "SplitPath: invalid key \"a.\" at pos 1: ends with '.'",
 		},
 		{
 			name: "dot after dot",
 			key:  "a..b",
-			err:  "invalid key \"a..b\" at pos 2: empty key between dots",
+			err:  "SplitPath: invalid key \"a..b\" at pos 2: empty key between dots",
 		},
 		{
 			name: "unmatched opening bracket in path",
 			key:  "a[",
-			err:  "invalid key \"a\\[\" at pos 1: unclosed '\\['",
+			err:  "SplitPath: invalid key \"a[\" at pos 1: unclosed '['",
 		},
 		{
 			name: "unmatched closing bracket in path",
 			key:  "a]",
-			err:  "invalid key \"a\\]\" at pos 1: '\\]' without matching '\\['",
+			err:  "SplitPath: invalid key \"a]\" at pos 1: ']' without matching '['",
 		},
 		{
 			name: "dot after bracket",
 			key:  "a.[0]",
-			err:  "invalid key \"a.\\[0\\]\" at pos 2: '\\[' cannot directly follow '.'",
+			err:  "SplitPath: invalid key \"a.[0]\" at pos 2: '[' cannot directly follow '.'",
 		},
 		{
 			name: "dot after closing bracket",
 			key:  "a[0]..b",
-			err:  "invalid key \"a\\[0\\]..b\" at pos 5: empty key between dots",
+			err:  "SplitPath: invalid key \"a[0]..b\" at pos 5: empty key between dots",
 		},
 		{
 			name: "characters after closing bracket",
 			key:  "a[0]b",
-			err:  "invalid key \"a\\[0\\]b\" at pos 4: unexpected character 'b' after '\\]'",
+			err:  "SplitPath: invalid key \"a[0]b\" at pos 4: unexpected character 'b' after ']'",
 		},
 		{
 			name: "negative index",
 			key:  "[-1]",
-			err:  "invalid key \"\\[-1\\]\" at pos 1: index must be an unsigned integer \\(got \"-1\"\\)",
+			err:  "SplitPath: invalid key \"[-1]\" at pos 1: index must be an unsigned integer (got \"-1\")",
 		},
 		{
 			name: "dot inside brackets",
 			key:  "[.]",
-			err:  "'.' not allowed inside brackets",
+			err:  "SplitPath: invalid key \"[.]\" at pos 1: '.' not allowed inside brackets",
 		},
 		{
 			name: "nested opening bracket",
 			key:  "a[[0]]",
-			err:  "nested '\\['",
+			err:  "SplitPath: invalid key \"a[[0]]\" at pos 2: nested '['",
 		},
 		{
 			name: "index overflow",
 			key:  "a[18446744073709551616]", // uint64 max + 1
-			err:  "index must be an unsigned integer \\(got \"18446744073709551616\"\\)",
+			err:  "SplitPath: invalid key \"a[18446744073709551616]\" at pos 2: index must be an unsigned integer (got \"18446744073709551616\")",
 		},
 
 		// Valid cases
@@ -209,7 +209,7 @@ func TestPath(t *testing.T) {
 			p, err := SplitPath(tc.key)
 			if tc.err != "" {
 				assert.That(t, err).NotNil()
-				assert.Error(t, err).Matches(tc.err)
+				assert.Error(t, err).String(tc.err)
 				return
 			}
 

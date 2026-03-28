@@ -18,6 +18,7 @@ package ctxcache
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -25,11 +26,13 @@ func TestCtxCache(t *testing.T) {
 
 	// Operations on uninitialized context
 	err := Set(t.Context(), "key", "value")
+	fmt.Println(err)
 	if err == nil || !errors.Is(err, ErrCacheNotInitialized) {
 		t.Error("Expected ErrCacheNotInitialized when calling Set on unbound context")
 	}
 
 	_, err = Get[string](t.Context(), "key")
+	fmt.Println(err)
 	if err == nil || !errors.Is(err, ErrCacheNotInitialized) {
 		t.Error("Expected ErrCacheNotInitialized when calling Get on unbound context")
 	}
@@ -43,17 +46,20 @@ func TestCtxCache(t *testing.T) {
 
 	// Getting an unset key should fail
 	_, err = Get[string](ctx1, "key")
+	fmt.Println(err)
 	if err == nil || !errors.Is(err, ErrKeyNotSet) {
 		t.Error("Expected ErrKeyNotSet for unset key")
 	}
 
 	// Set and Get a string value successfully
 	err = Set(ctx1, "key", "value")
+	fmt.Println(err)
 	if err != nil {
 		t.Fatalf("Set string failed: %v", err)
 	}
 
 	value, err := Get[string](ctx1, "key")
+	fmt.Println(err)
 	if err != nil {
 		t.Fatalf("Get string failed: %v", err)
 	}
@@ -63,17 +69,20 @@ func TestCtxCache(t *testing.T) {
 
 	// Setting the same key twice should fail
 	err = Set(ctx1, "key", "anotherValue")
+	fmt.Println(err)
 	if err == nil || !errors.Is(err, ErrKeyAlreadySet) {
 		t.Error("Expected ErrKeyAlreadySet when setting the same key twice")
 	}
 
 	// Set and Get multiple types under same key
 	err = Set(ctx1, "key", 42)
+	fmt.Println(err)
 	if err != nil {
 		t.Fatalf("Set int failed: %v", err)
 	}
 
 	intValue, err := Get[int](ctx1, "key")
+	fmt.Println(err)
 	if err != nil {
 		t.Fatalf("Get int failed: %v", err)
 	}
@@ -85,6 +94,7 @@ func TestCtxCache(t *testing.T) {
 	cancel1()
 
 	_, err = Get[string](ctx1, "key")
+	fmt.Println(err)
 	if err == nil || !errors.Is(err, ErrCacheAlreadyCleared) {
 		t.Error("Expected ErrCacheAlreadyCleared after cancel")
 	}
@@ -93,11 +103,13 @@ func TestCtxCache(t *testing.T) {
 	cancel2()
 
 	err = Set(ctx1, "key", "value")
+	fmt.Println(err)
 	if err == nil || !errors.Is(err, ErrCacheAlreadyCleared) {
 		t.Error("Expected ErrCacheAlreadyCleared when setting after cancel")
 	}
 
 	_, err = Get[int](ctx1, "key")
+	fmt.Println(err)
 	if err == nil || !errors.Is(err, ErrCacheAlreadyCleared) {
 		t.Error("Expected ErrCacheAlreadyCleared after cancel")
 	}

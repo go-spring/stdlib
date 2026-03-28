@@ -98,7 +98,7 @@ func JoinPath(path []Path) string {
 //     unexpected characters, or empty keys if disallowed).
 func SplitPath(key string) (_ []Path, err error) {
 	if key == "" {
-		return nil, errutil.Explain(nil, "invalid key: empty string")
+		return nil, errutil.Explain(nil, "SplitPath: invalid key: empty string")
 	}
 
 	var (
@@ -111,31 +111,31 @@ func SplitPath(key string) (_ []Path, err error) {
 	for i, c := range key {
 		switch c {
 		case ' ':
-			return nil, errutil.Explain(nil, "invalid key %q: contains space at pos %d", key, i)
+			return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: contains space", key, i)
 		case '.':
 			if openBracket {
-				return nil, errutil.Explain(nil, "invalid key %q at pos %d: '.' not allowed inside brackets", key, i)
+				return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: '.' not allowed inside brackets", key, i)
 			}
 			if lastChar == '.' {
-				return nil, errutil.Explain(nil, "invalid key %q at pos %d: empty key between dots", key, i)
+				return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: empty key between dots", key, i)
 			}
 			if lastChar != ']' {
 				if path, err = appendKey(path, key[lastPos:i]); err != nil {
-					return nil, errutil.Explain(err, "invalid key %q at pos %d", key, lastPos)
+					return nil, errutil.Explain(err, "SplitPath: invalid key %q at pos %d", key, lastPos)
 				}
 			}
 			lastPos = i + 1
 			lastChar = '.'
 		case '[':
 			if openBracket {
-				return nil, errutil.Explain(nil, "invalid key %q at pos %d: nested '['", key, i)
+				return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: nested '['", key, i)
 			}
 			if lastChar == '.' {
-				return nil, errutil.Explain(nil, "invalid key %q at pos %d: '[' cannot directly follow '.'", key, i)
+				return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: '[' cannot directly follow '.'", key, i)
 			}
 			if i > 0 && lastChar != ']' {
 				if path, err = appendKey(path, key[lastPos:i]); err != nil {
-					return nil, errutil.Explain(err, "invalid key %q at pos %d", key, lastPos)
+					return nil, errutil.Explain(err, "SplitPath: invalid key %q at pos %d", key, lastPos)
 				}
 			}
 			openBracket = true
@@ -143,13 +143,13 @@ func SplitPath(key string) (_ []Path, err error) {
 			lastChar = '['
 		case ']':
 			if !openBracket {
-				return nil, errutil.Explain(nil, "invalid key %q at pos %d: ']' without matching '['", key, i)
+				return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: ']' without matching '['", key, i)
 			}
 			if lastPos == i {
-				return nil, errutil.Explain(nil, "invalid key %q at pos %d: empty index", key, lastPos)
+				return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: empty index", key, lastPos)
 			}
 			if path, err = appendIndex(path, key[lastPos:i]); err != nil {
-				return nil, errutil.Explain(err, "invalid key %q at pos %d", key, lastPos)
+				return nil, errutil.Explain(err, "SplitPath: invalid key %q at pos %d", key, lastPos)
 			}
 			openBracket = false
 			lastPos = i + 1
@@ -157,21 +157,21 @@ func SplitPath(key string) (_ []Path, err error) {
 		default:
 			// if previous char was ']' and now we see other char that's not '.' or '[' it's invalid:
 			if lastChar == ']' {
-				return nil, errutil.Explain(nil, "invalid key %q at pos %d: unexpected character %q after ']'", key, i, c)
+				return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: unexpected character %q after ']'", key, i, c)
 			}
 			lastChar = c
 		}
 	}
 
 	if openBracket {
-		return nil, errutil.Explain(nil, "invalid key %q at pos %d: unclosed '['", key, lastPos-1)
+		return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: unclosed '['", key, lastPos-1)
 	}
 	if lastChar == '.' {
-		return nil, errutil.Explain(nil, "invalid key %q at pos %d: ends with '.'", key, len(key)-1)
+		return nil, errutil.Explain(nil, "SplitPath: invalid key %q at pos %d: ends with '.'", key, len(key)-1)
 	}
 	if lastChar != ']' {
 		if path, err = appendKey(path, key[lastPos:]); err != nil {
-			return nil, errutil.Explain(err, "invalid key %q at pos %d", key, lastPos)
+			return nil, errutil.Explain(err, "SplitPath: invalid key %q at pos %d", key, lastPos)
 		}
 	}
 

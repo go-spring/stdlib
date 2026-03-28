@@ -99,7 +99,7 @@ func (s *Status) Wait() {
 // context.WithoutCancel. In that case, cancellation and deadlines of the
 // parent context will not propagate to the goroutine.
 func Go(ctx context.Context, f func(ctx context.Context), mode CancelMode) *Status {
-	if mode == DetachCancel {
+	if mode == DetachCancel && ctx != nil {
 		ctx = context.WithoutCancel(ctx)
 	}
 	s := newStatus()
@@ -161,7 +161,7 @@ type GoValueFunc[T any] func(ctx context.Context) (T, error)
 // context.WithoutCancel. In that case, cancellation and deadlines of the
 // parent context will not propagate to the goroutine.
 func GoValue[T any](ctx context.Context, f GoValueFunc[T], mode CancelMode) *ValueStatus[T] {
-	if mode == DetachCancel {
+	if mode == DetachCancel && ctx != nil {
 		ctx = context.WithoutCancel(ctx)
 	}
 	s := newValueStatus[T]()

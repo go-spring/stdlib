@@ -151,19 +151,19 @@ func Get[T any](ctx context.Context, key string) (T, error) {
 	k := TypedKey[T]{Key: key}
 	cache, ok := getCache(ctx)
 	if !ok {
-		return zero, errutil.Explain(ErrCacheNotInitialized, "%s", k)
+		return zero, errutil.Explain(ErrCacheNotInitialized, "ctxcache: get %s error", k)
 	}
 
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
 	if cache.cleared {
-		return zero, errutil.Explain(ErrCacheAlreadyCleared, "%s", k)
+		return zero, errutil.Explain(ErrCacheAlreadyCleared, "ctxcache: get %s error", k)
 	}
 
 	v, ok := cache.values[k]
 	if !ok {
-		return zero, errutil.Explain(ErrKeyNotSet, "%s", k)
+		return zero, errutil.Explain(ErrKeyNotSet, "ctxcache: get %s error", k)
 	}
 
 	return v.(T), nil
@@ -181,18 +181,18 @@ func Set[T any](ctx context.Context, key string, value T) error {
 	k := TypedKey[T]{Key: key}
 	cache, ok := getCache(ctx)
 	if !ok {
-		return errutil.Explain(ErrCacheNotInitialized, "%s", k)
+		return errutil.Explain(ErrCacheNotInitialized, "ctxcache: set %s error", k)
 	}
 
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
 	if cache.cleared {
-		return errutil.Explain(ErrCacheAlreadyCleared, "%s", k)
+		return errutil.Explain(ErrCacheAlreadyCleared, "ctxcache: set %s error", k)
 	}
 
 	if _, ok = cache.values[k]; ok {
-		return errutil.Explain(ErrKeyAlreadySet, "%s", k)
+		return errutil.Explain(ErrKeyAlreadySet, "ctxcache: set %s error", k)
 	}
 
 	cache.values[k] = value

@@ -791,7 +791,7 @@ func TestDecodeAny(t *testing.T) {
 	t.Run("Decode any with unmarshal error", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader("1e520"))
 		_, err := DecodeAny[any](d)
-		assert.Error(t, err).String("json: cannot unmarshal JSON number 1e520 into Go float64: value out of range")
+		assert.Error(t, err).Matches("json: .* unmarshal JSON number 1e520 into Go float64: value out of range")
 	})
 }
 

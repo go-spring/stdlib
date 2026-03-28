@@ -20,12 +20,6 @@ These two patterns serve different purposes:
 The goal is to make error wrapping more expressive by clearly separating **interpretation (`:`)** from **trace
 path (`>>`)**.
 
-## Installation
-
-```bash
-go get github.com/lvan100/errutil
-```
-
 ## Usage
 
 ### Explanatory Wrapping
