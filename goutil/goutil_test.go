@@ -18,10 +18,10 @@ package goutil_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
+	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/goutil"
 	"github.com/go-spring/stdlib/testing/assert"
 )
@@ -125,7 +125,7 @@ func TestGoValue(t *testing.T) {
 	})
 
 	t.Run("error return", func(t *testing.T) {
-		expectedErr := errors.New("expected error")
+		expectedErr := errutil.Explain(nil, "expected error")
 		_, err := goutil.GoValue(t.Context(), func(ctx context.Context) (string, error) {
 			return "", expectedErr
 		}, goutil.InheritCancel).Wait()

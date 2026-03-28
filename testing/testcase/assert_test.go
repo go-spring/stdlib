@@ -18,12 +18,12 @@ package testcase_test
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"slices"
 	"testing"
 
+	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/testing/assert"
 	"github.com/go-spring/stdlib/testing/internal"
 	"github.com/go-spring/stdlib/testing/require"
@@ -180,7 +180,7 @@ func TestPanic(t *testing.T) {
 
 	// Test panic with different types of values
 	m.Reset()
-	assert.Panic(m, func() { panic(errors.New("there's no error")) }, "an error")
+	assert.Panic(m, func() { panic(errutil.Explain(nil, "there's no error")) }, "an error")
 	assert.String(t, m.String()).Equal(`error# Assertion failed: got "there's no error" which does not match "an error"`)
 
 	m.Reset()
@@ -707,7 +707,7 @@ expected: fmt.Stringer`)
 	// Test with interface implementation
 	m.Reset()
 	var err error
-	assert.That(m, errors.New("test")).TypeOf(&err)
+	assert.That(m, errutil.Explain(nil, "test")).TypeOf(&err)
 	assert.String(t, m.String()).Equal("")
 
 	// Test with slice types
@@ -760,7 +760,7 @@ func TestThat_Implements(t *testing.T) {
 
 	// Test successful interface implementation
 	m.Reset()
-	assert.That(m, errors.New("error")).Implements((*error)(nil))
+	assert.That(m, errutil.Explain(nil, "error")).Implements((*error)(nil))
 	assert.String(t, m.String()).Equal("")
 
 	// Test non-interface target

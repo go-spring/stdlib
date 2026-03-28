@@ -46,16 +46,17 @@ package ctxcache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/go-spring/stdlib/errutil"
 )
 
 var (
-	ErrCacheNotInitialized = errors.New("cache not initialized")
-	ErrCacheAlreadyCleared = errors.New("cache already cleared")
-	ErrKeyNotSet           = errors.New("key not set")
-	ErrKeyAlreadySet       = errors.New("key already set")
+	ErrCacheNotInitialized = errutil.Explain(nil, "cache not initialized")
+	ErrCacheAlreadyCleared = errutil.Explain(nil, "cache already cleared")
+	ErrKeyNotSet           = errutil.Explain(nil, "key not set")
+	ErrKeyAlreadySet       = errutil.Explain(nil, "key already set")
 )
 
 type cacheKeyType struct{}
@@ -150,19 +151,19 @@ func Get[T any](ctx context.Context, key string) (T, error) {
 	k := TypedKey[T]{Key: key}
 	cache, ok := getCache(ctx)
 	if !ok {
-		return zero, fmt.Errorf("%s: %w", k, ErrCacheNotInitialized)
+		return zero, errutil.Explain(ErrCacheNotInitialized, "%s", k)
 	}
 
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
 	if cache.cleared {
-		return zero, fmt.Errorf("%s: %w", k, ErrCacheAlreadyCleared)
+		return zero, errutil.Explain(ErrCacheAlreadyCleared, "%s", k)
 	}
 
 	v, ok := cache.values[k]
 	if !ok {
-		return zero, fmt.Errorf("%s: %w", k, ErrKeyNotSet)
+		return zero, errutil.Explain(ErrKeyNotSet, "%s", k)
 	}
 
 	return v.(T), nil
@@ -180,18 +181,18 @@ func Set[T any](ctx context.Context, key string, value T) error {
 	k := TypedKey[T]{Key: key}
 	cache, ok := getCache(ctx)
 	if !ok {
-		return fmt.Errorf("%s: %w", k, ErrCacheNotInitialized)
+		return errutil.Explain(ErrCacheNotInitialized, "%s", k)
 	}
 
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
 	if cache.cleared {
-		return fmt.Errorf("%s: %w", k, ErrCacheAlreadyCleared)
+		return errutil.Explain(ErrCacheAlreadyCleared, "%s", k)
 	}
 
 	if _, ok = cache.values[k]; ok {
-		return fmt.Errorf("%s: %w", k, ErrKeyAlreadySet)
+		return errutil.Explain(ErrKeyAlreadySet, "%s", k)
 	}
 
 	cache.values[k] = value

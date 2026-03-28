@@ -17,19 +17,19 @@
 package typeutil_test
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"testing"
 	"unsafe"
 
+	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/testing/assert"
 	"github.com/go-spring/stdlib/typeutil"
 )
 
 func TestIsErrorType(t *testing.T) {
-	err := errors.New("error")
+	err := errutil.Explain(nil, "error")
 	assert.That(t, typeutil.IsErrorType(reflect.TypeOf(err))).True()
 
 	err = os.ErrClosed
@@ -191,7 +191,7 @@ func TestIsBeanType(t *testing.T) {
 func TestIsBeanInjectionTarget(t *testing.T) {
 	assert.That(t, typeutil.IsBeanInjectionTarget(reflect.TypeFor[string]())).False()
 	assert.That(t, typeutil.IsBeanInjectionTarget(reflect.TypeFor[*string]())).False()
-	assert.That(t, typeutil.IsBeanInjectionTarget(reflect.TypeOf(errors.New("abc")))).True()
+	assert.That(t, typeutil.IsBeanInjectionTarget(reflect.TypeOf(errutil.Explain(nil, "abc")))).True()
 	assert.That(t, typeutil.IsBeanInjectionTarget(reflect.TypeFor[[]string]())).False()
 	assert.That(t, typeutil.IsBeanInjectionTarget(reflect.TypeFor[[]*string]())).False()
 	assert.That(t, typeutil.IsBeanInjectionTarget(reflect.TypeFor[[]fmt.Stringer]())).True()
