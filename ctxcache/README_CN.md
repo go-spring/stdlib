@@ -36,7 +36,7 @@ defer cancel() // 在请求边界处清理缓存
 ```go
 err := ctxcache.Set(ctx, "user", userInfo)
 if err != nil {
-// 处理错误
+    // 处理错误
 }
 ```
 
@@ -49,7 +49,7 @@ if err != nil {
 ```go
 value, err := ctxcache.Get[UserType](ctx, "user")
 if err != nil {
-// 处理错误
+    // 处理错误
 }
 ```
 

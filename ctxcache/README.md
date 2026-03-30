@@ -38,7 +38,7 @@ Use the `Set` function to assign a value to a key:
 ```go
 err := ctxcache.Set(ctx, "user", userInfo)
 if err != nil {
-// handle error
+    // handle error
 }
 ```
 
@@ -51,7 +51,7 @@ Use the `Get` function to retrieve a value:
 ```go
 value, err := ctxcache.Get[UserType](ctx, "user")
 if err != nil {
-// handle error
+    // handle error
 }
 ```
 
