@@ -183,6 +183,37 @@ func TestPropertiesStorage(t *testing.T) {
 		assert.Map(t, result).ContainsKeys([]string{"http", "grpc"})
 	})
 
+	t.Run("MapKeys with nested slice", func(t *testing.T) {
+		p := NewProperties(map[string]string{
+			"server.users[0].name": "Alice",
+			"server.users[1].name": "Bob",
+		})
+		s := NewPropertiesStorage(p)
+
+		result := make(map[string]struct{})
+		found := s.MapKeys("server", result)
+
+		assert.That(t, found).True()
+		assert.Map(t, result).ContainsKeys([]string{"users"})
+		assert.That(t, len(result)).Equal(1)
+	})
+
+	t.Run("MapKeys with empty key collects root keys", func(t *testing.T) {
+		p := NewProperties(map[string]string{
+			"server.host":   "localhost",
+			"users[0].name": "Alice",
+			"debug":         "true",
+		})
+		s := NewPropertiesStorage(p)
+
+		result := make(map[string]struct{})
+		found := s.MapKeys("", result)
+
+		assert.That(t, found).True()
+		assert.Map(t, result).ContainsKeys([]string{"server", "users", "debug"})
+		assert.That(t, len(result)).Equal(3)
+	})
+
 	t.Run("MapKeys with non-existing prefix", func(t *testing.T) {
 		p := NewProperties(map[string]string{
 			"server.host": "localhost",
@@ -313,7 +344,10 @@ func TestPrefixedStorage(t *testing.T) {
 		found := s.SliceEntries("users", result)
 
 		assert.That(t, found).True()
-		assert.Map(t, result).ContainsKeys([]string{"prod.users[0].name", "prod.users[0].age"})
+		assert.Map(t, result).ContainsKeys([]string{"users[0].name", "users[0].age"})
+		assert.Map(t, result).NotContainsKeys([]string{"prod.users[0].name", "prod.users[0].age"})
+		assert.That(t, result["users[0].name"]).Equal("Alice")
+		assert.That(t, result["users[0].age"]).Equal("30")
 	})
 
 	t.Run("Empty prefix", func(t *testing.T) {
@@ -501,6 +535,30 @@ func TestLayeredStorage(t *testing.T) {
 		// Should only have entries from cmdline layer
 		assert.That(t, len(result)).Equal(1)
 		assert.That(t, result["users[0].name"]).Equal("Override")
+	})
+
+	t.Run("SliceEntries stops at higher priority scalar value", func(t *testing.T) {
+		s := &LayeredStorage{}
+
+		defaultLayer := NewProperties(map[string]string{
+			"users[0]": "Default",
+			"users[1]": "User1",
+		})
+		s.AddStorage(StorageDefault, NewPropertiesStorage(defaultLayer), "default")
+
+		cmdlineLayer := NewProperties(map[string]string{
+			"users": "Override1,Override2",
+		})
+		s.AddStorage(StorageCommandLine, NewPropertiesStorage(cmdlineLayer), "cmdline")
+
+		result := make(map[string]string)
+		found := s.SliceEntries("users", result)
+
+		assert.That(t, found).False()
+		assert.That(t, len(result)).Equal(0)
+		val, ok := s.Value("users")
+		assert.That(t, ok).True()
+		assert.That(t, val).Equal("Override1,Override2")
 	})
 
 	t.Run("multiple sources in same layer", func(t *testing.T) {

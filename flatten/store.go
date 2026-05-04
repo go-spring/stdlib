@@ -167,14 +167,20 @@ func (s *PropertiesStorage) Value(key string) (string, bool) {
 func (s *PropertiesStorage) MapKeys(key string, result map[string]struct{}) bool {
 	var found bool
 	for k := range s.data {
-		str, ok := strings.CutPrefix(k, key)
-		if !ok || str == "" || str[0] != '.' {
-			continue
+		var str string
+		if key == "" {
+			str = k
+		} else {
+			var ok bool
+			str, ok = strings.CutPrefix(k, key)
+			if !ok || str == "" || str[0] != '.' {
+				continue
+			}
+			if str = str[1:]; str == "" {
+				continue
+			}
 		}
-		if str = str[1:]; str == "" {
-			continue
-		}
-		if i := strings.Index(str, "."); i > 0 {
+		if i := strings.IndexAny(str, ".["); i > 0 {
 			result[str[:i]] = struct{}{}
 			found = true
 		} else if i < 0 {
@@ -234,7 +240,16 @@ func (s *PrefixedStorage) MapKeys(key string, result map[string]struct{}) bool {
 
 // SliceEntries retrieves slice entries with the configured prefix.
 func (s *PrefixedStorage) SliceEntries(key string, result map[string]string) bool {
-	return s.Storage.SliceEntries(s.Prefix+key, result)
+	m := make(map[string]string)
+	if !s.Storage.SliceEntries(s.Prefix+key, m) {
+		return false
+	}
+	for k, v := range m {
+		if str, ok := strings.CutPrefix(k, s.Prefix); ok {
+			result[str] = v
+		}
+	}
+	return true
 }
 
 const (
@@ -418,6 +433,9 @@ func (s *LayeredStorage) MapKeys(key string, result map[string]struct{}) bool {
 func (s *LayeredStorage) SliceEntries(key string, result map[string]string) bool {
 	for _, arr := range s.layers {
 		for _, source := range arr {
+			if _, ok := source.Value(key); ok {
+				return false
+			}
 			if source.SliceEntries(key, result) {
 				return true
 			}
