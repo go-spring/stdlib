@@ -17,6 +17,7 @@
 package jsonflow
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	stdjsonv2 "encoding/json/v2"
 	"io"
@@ -66,6 +67,15 @@ func toJSONv2Options(opts []MarshalOptions) []jsontext.Options {
 
 // Marshal marshals a Go value into JSON bytes.
 func Marshal(i any, opts ...MarshalOptions) ([]byte, error) {
+	if len(opts) == 0 {
+		if _, ok := i.(EncodeJSONer); ok {
+			buf := bytes.NewBuffer(nil)
+			if err := MarshalWrite(buf, i); err != nil {
+				return nil, err
+			}
+			return buf.Bytes(), nil
+		}
+	}
 	return stdjsonv2.Marshal(i, toJSONv2Options(opts)...)
 }
 
@@ -76,15 +86,77 @@ func MarshalIndent(i any, prefix, indent string) ([]byte, error) {
 
 // MarshalWrite marshals a Go value into JSON bytes and writes them to a writer.
 func MarshalWrite(w io.Writer, i any, opts ...MarshalOptions) error {
+	if len(opts) == 0 {
+		if v, ok := i.(EncodeJSONer); ok {
+			tw := &trimFinalNewlineWriter{w: w}
+			if err := v.EncodeJSON(NewEncoder(tw)); err != nil {
+				return err
+			}
+			return tw.Close()
+		}
+	}
 	return stdjsonv2.MarshalWrite(w, i, toJSONv2Options(opts)...)
 }
 
 // Unmarshal unmarshals JSON bytes into a Go value.
 func Unmarshal(b []byte, i any) error {
+	if v, ok := i.(Object); ok {
+		d := NewDecoder(bytes.NewReader(b))
+		if err := v.DecodeJSON(d); err != nil {
+			return err
+		}
+		return DecodeEOF(d)
+	}
 	return stdjsonv2.Unmarshal(b, i)
 }
 
 // UnmarshalRead unmarshals JSON bytes from a reader into a Go value.
 func UnmarshalRead(r io.Reader, i any) error {
+	if v, ok := i.(Object); ok {
+		d := NewDecoder(r)
+		if err := v.DecodeJSON(d); err != nil {
+			return err
+		}
+		return DecodeEOF(d)
+	}
 	return stdjsonv2.UnmarshalRead(r, i)
+}
+
+type trimFinalNewlineWriter struct {
+	w    io.Writer
+	last byte
+	hold bool
+}
+
+func (w *trimFinalNewlineWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if w.hold {
+		if _, err := w.w.Write([]byte{w.last}); err != nil {
+			return 0, err
+		}
+		w.hold = false
+	}
+	if len(p) > 1 {
+		if _, err := w.w.Write(p[:len(p)-1]); err != nil {
+			return 0, err
+		}
+	}
+	w.last = p[len(p)-1]
+	w.hold = true
+	return len(p), nil
+}
+
+func (w *trimFinalNewlineWriter) Close() error {
+	if !w.hold {
+		return nil
+	}
+	if w.last == '\n' {
+		w.hold = false
+		return nil
+	}
+	_, err := w.w.Write([]byte{w.last})
+	w.hold = false
+	return err
 }

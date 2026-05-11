@@ -544,6 +544,13 @@ func TestDecodeBytes(t *testing.T) {
 		assert.That(t, result).Equal([]byte{})
 	})
 
+	t.Run("Decode null bytes", func(t *testing.T) {
+		d := NewDecoder(strings.NewReader("null"))
+		result, err := DecodeBytes(d)
+		assert.That(t, err).Nil()
+		assert.That(t, result).Nil()
+	})
+
 	t.Run("Decode invalid base64", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader(`"invalid_base64!"`))
 		_, err := DecodeBytes(d)

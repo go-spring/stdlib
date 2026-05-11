@@ -18,6 +18,7 @@ package jsonflow
 
 import (
 	"encoding/base64"
+	"io"
 	"strconv"
 
 	"github.com/go-spring/stdlib/errutil"
@@ -194,7 +195,23 @@ func ParseBytes(token string, k json.Kind) ([]byte, error) {
 
 // DecodeBytes reads the next JSON value and parses it as base64-decoded bytes.
 func DecodeBytes(d Decoder) ([]byte, error) {
+	if d.PeekKind() == 'n' {
+		_, _, err := d.ReadToken()
+		return nil, err
+	}
 	return DecodeValue(ParseBytes, errFormatString)(d)
+}
+
+// DecodeEOF verifies that the decoder has no remaining top-level JSON tokens.
+func DecodeEOF(d Decoder) error {
+	token, _, err := d.ReadToken()
+	if err == io.EOF {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errutil.Explain(nil, "invalid JSON: unexpected token after top-level value `%s`", token)
 }
 
 // Object represents a JSON-mappable object that supports streaming decoding.
